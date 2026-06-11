@@ -58,11 +58,30 @@ export function initUI(callbacks) {
   const drillGoals = document.getElementById('drill-goals');
   const drillProgress = document.getElementById('drill-progress');
 
+  const planStorm = document.getElementById('plan-storm');
+  const planDrought = document.getElementById('plan-drought');
+  const planEmergency = document.getElementById('plan-emergency');
+  const planInfo = document.getElementById('plan-info');
+
+  const todoActiveList = document.getElementById('todo-active-list');
+  const todoCompletedList = document.getElementById('todo-completed-list');
+
+  const reportOverlay = document.getElementById('report-overlay');
+  const reportTitle = document.getElementById('report-title');
+  const reportSummary = document.getElementById('report-summary');
+  const reportFaultList = document.getElementById('report-fault-list');
+  const reportFaults = document.getElementById('report-faults');
+  const reportClose = document.getElementById('report-close');
+  const exportReportBtn = document.getElementById('export-report-btn');
+
   let weather = 'sunny';
   let season = 'rainy';
   let currentView = 'external';
   let currentMode = 'auto';
   let isManualGate = false;
+  let activePlan = null;
+  let completedTodoMap = {};
+  let currentReport = null;
 
   gateSlider.addEventListener('input', () => {
     const val = parseInt(gateSlider.value) / 100;
@@ -82,7 +101,7 @@ export function initUI(callbacks) {
   const dispatchInfoMap = {
     auto: { hint: '推荐闸门: 55% | 泄洪: 8m以上触发', reason: '自动平衡发电与水位——保持最优发电效率，自动微调闸门' },
     storage: { hint: '推荐闸门: 5% | 泄洪: 8m以上触发', reason: '蓄水优先——关闭闸门，水位将快速上升，适合旱季后补水' },
-    flood: { hint: '推荐闸门: 100% | 泄洪: 6m提前触发', reason: '防洪优先——全开闸门并提前触发泄洪，快速降低水位至安全线' }
+    flood: { hint: '推荐闸门: 100% | 泄洪: 5m提前触发', reason: '防洪优先——全开闸门并提前触发泄洪，快速降低水位至安全线' }
   };
 
   modeAuto.addEventListener('click', () => {
@@ -146,10 +165,39 @@ export function initUI(callbacks) {
   repairPipeBtn.addEventListener('click', () => callbacks.onClearPipe());
   exportBtn.addEventListener('click', () => callbacks.onExport());
 
-  drillFlashFlood.addEventListener('click', () => callbacks.onStartDrill('flashFlood'));
-  drillFailure.addEventListener('click', () => callbacks.onStartDrill('unitFailure'));
-  drillSpill.addEventListener('click', () => callbacks.onStartDrill('emergencySpill'));
+  drillFlashFlood.addEventListener('click', () => {
+    completedTodoMap = {};
+    callbacks.onStartDrill('flashFlood');
+  });
+  drillFailure.addEventListener('click', () => {
+    completedTodoMap = {};
+    callbacks.onStartDrill('unitFailure');
+  });
+  drillSpill.addEventListener('click', () => {
+    completedTodoMap = {};
+    callbacks.onStartDrill('emergencySpill');
+  });
   drillStop.addEventListener('click', () => callbacks.onStopDrill());
+
+  planStorm.addEventListener('click', () => callbacks.onApplyPlan('storm'));
+  planDrought.addEventListener('click', () => callbacks.onApplyPlan('drought'));
+  planEmergency.addEventListener('click', () => callbacks.onApplyPlan('emergency'));
+
+  reportClose.addEventListener('click', () => {
+    reportOverlay.classList.remove('visible');
+  });
+
+  reportOverlay.addEventListener('click', (e) => {
+    if (e.target === reportOverlay) {
+      reportOverlay.classList.remove('visible');
+    }
+  });
+
+  exportReportBtn.addEventListener('click', () => {
+    if (currentReport && callbacks.onExportReport) {
+      callbacks.onExportReport(currentReport);
+    }
+  });
 
   function updateDisplay(state) {
     valWater.textContent = state.waterLevel.toFixed(2);
@@ -236,6 +284,38 @@ export function initUI(callbacks) {
     }
   }
 
+  function updatePlanInfo(planResult) {
+    if (!planResult) {
+      planInfo.style.display = 'none';
+      [planStorm, planDrought, planEmergency].forEach(b => b.classList.remove('active'));
+      activePlan = null;
+      return;
+    }
+
+    const { plan, eta } = planResult;
+    activePlan = plan.id;
+
+    [planStorm, planDrought, planEmergency].forEach(b => b.classList.remove('active'));
+    if (plan.id === 'storm') planStorm.classList.add('active');
+    if (plan.id === 'drought') planDrought.classList.add('active');
+    if (plan.id === 'emergency') planEmergency.classList.add('active');
+
+    const etaMin = Math.floor(eta.etaSec / 60);
+    const etaSec = eta.etaSec % 60;
+    const etaStr = eta.etaSec < 600
+      ? etaMin + '分' + etaSec + '秒'
+      : '>10分（请持续观察）';
+
+    planInfo.style.display = 'block';
+    planInfo.innerHTML = `
+      <div style="margin-bottom:2px"><strong>${plan.desc}</strong></div>
+      <div>🎯 目标：${plan.target}</div>
+      <div>⚙️ 模式：${plan.mode==='flood'?'防洪':plan.mode==='storage'?'蓄水':'自动'} | 闸门：${Math.round(plan.gate*100)}%</div>
+      <div>⏱ 预计达标：<span class="eta">${etaStr}</span></div>
+      <div style="margin-top:2px;font-size:8px;color:rgba(160,185,230,0.5)">净流量：${eta.netFlow>0?'+':''}${eta.netFlow.toFixed(0)} m³/s</div>
+    `;
+  }
+
   function updateDrillPanel(drillStatus) {
     if (!drillStatus) {
       drillPanel.classList.remove('visible');
@@ -268,6 +348,135 @@ export function initUI(callbacks) {
     drillProgress.textContent = drillStatus.completed
       ? '🏆 已完成！耗时 ' + min + '分' + sec + '秒'
       : '进度 ' + drillStatus.doneCount + '/' + drillStatus.totalCount + ' | 已用时 ' + min + '分' + sec + '秒';
+  }
+
+  function updateFaultTodoCards(activeFaults, faultLog) {
+    if (!activeFaults) {
+      todoActiveList.innerHTML = '<div style="font-size:9px;color:rgba(160,185,230,0.3);text-align:center;padding:4px">暂无待处理故障 ✅</div>';
+    } else if (activeFaults.length === 0) {
+      todoActiveList.innerHTML = '<div style="font-size:9px;color:rgba(160,185,230,0.3);text-align:center;padding:4px">暂无待处理故障 ✅</div>';
+    } else {
+      let html = '';
+      activeFaults.forEach(f => {
+        const detectedSec = f.detectedAt ? Math.floor(f.detectedAt) : 0;
+        const min = Math.floor(detectedSec / 60);
+        const sec = detectedSec % 60;
+        html += '<div class="todo-card active">';
+        html += '<div>';
+        html += '<div class="todo-label">🔴 ' + f.label + '</div>';
+        html += '<div class="todo-time">触发时间：' + min + '分' + sec + '秒</div>';
+        html += '</div>';
+        if (f.type === 'turbineSeizure') {
+          html += '<button class="todo-btn repair-btn" id="todo-repair-turbine">维修</button>';
+        } else if (f.type === 'pipeBlockage') {
+          html += '<button class="todo-btn repair-btn" id="todo-clear-pipe">疏通</button>';
+        } else if (f.type === 'generatorOverheat') {
+          html += '<button class="todo-btn cool-btn" id="todo-cool">冷却</button>';
+        }
+        html += '</div>';
+      });
+      todoActiveList.innerHTML = html;
+
+      const todoRepairTurbine = document.getElementById('todo-repair-turbine');
+      const todoClearPipe = document.getElementById('todo-clear-pipe');
+      const todoCool = document.getElementById('todo-cool');
+      if (todoRepairTurbine) todoRepairTurbine.addEventListener('click', () => callbacks.onRepairTurbine());
+      if (todoClearPipe) todoClearPipe.addEventListener('click', () => callbacks.onClearPipe());
+      if (todoCool) todoCool.addEventListener('click', () => callbacks.onCoolDown());
+    }
+
+    if (faultLog && faultLog.length > 0) {
+      const resolved = faultLog.filter(e => e.event === 'resolved');
+      if (resolved.length > 0) {
+        let html = '';
+        resolved.forEach(entry => {
+          const min = Math.floor(entry.time / 60);
+          const sec = Math.floor(entry.time % 60);
+          html += '<div class="todo-card completed">';
+          html += '<div>';
+          html += '<div class="todo-label">✅ ' + entry.label + ' 已处理</div>';
+          html += '<div class="todo-time">完成时间：' + min + '分' + sec + '秒</div>';
+          html += '</div>';
+          html += '</div>';
+        });
+        html += '<div style="font-size:9px;color:rgba(160,185,230,0.3);text-align:center;padding:2px">共 ' + resolved.length + ' 条处理记录</div>';
+        todoCompletedList.innerHTML = html;
+      } else {
+        todoCompletedList.innerHTML = '<div style="font-size:9px;color:rgba(160,185,230,0.3);text-align:center;padding:4px">暂无处理记录</div>';
+      }
+    } else {
+      todoCompletedList.innerHTML = '<div style="font-size:9px;color:rgba(160,185,230,0.3);text-align:center;padding:4px">暂无处理记录</div>';
+    }
+  }
+
+  function showReportOverlay(report) {
+    if (!report) return;
+    currentReport = report;
+    completedTodoMap = {};
+
+    const modeLabels = { flashFlood: '暴雨洪峰', unitFailure: '机组故障', emergencySpill: '紧急泄洪' };
+    const modeLabel = modeLabels[report.drillMode] || report.drillMode;
+    const elapsedMin = Math.floor(report.elapsed / 60);
+    const elapsedSec = Math.floor(report.elapsed % 60);
+
+    reportTitle.textContent = '📊 演练复盘报告 - ' + modeLabel;
+
+    const spillAt = report.spillwayOpenedAt !== null
+      ? Math.floor(report.spillwayOpenedAt) + '秒'
+      : '未触发';
+    const floodAt = report.floodModeAt !== null
+      ? Math.floor(report.floodModeAt) + '秒'
+      : '未切换';
+
+    reportSummary.innerHTML = `
+      <div class="report-summary-item">
+        <div class="report-summary-label">🏁 完成状态</div>
+        <div class="report-summary-value" style="color:${report.completed?'#00b894':'#fdcb6e'}">${report.completed ? '✅ 全部完成' : '⚠ 部分完成'} (${report.goalsCompleted}/${report.totalGoals})</div>
+      </div>
+      <div class="report-summary-item">
+        <div class="report-summary-label">⏱ 总耗时</div>
+        <div class="report-summary-value">${elapsedMin}分${elapsedSec}秒</div>
+      </div>
+      <div class="report-summary-item">
+        <div class="report-summary-label">📈 最高水位</div>
+        <div class="report-summary-value" style="color:${report.maxWaterLevel>8.0?'#e94560':'#64b5f6'}">${report.maxWaterLevel.toFixed(2)}m</div>
+      </div>
+      <div class="report-summary-item">
+        <div class="report-summary-label">📉 最低功率</div>
+        <div class="report-summary-value">${report.minPower ? report.minPower.toFixed(2) : '0.00'}MW</div>
+      </div>
+      <div class="report-summary-item">
+        <div class="report-summary-label">🌊 泄洪开启</div>
+        <div class="report-summary-value" style="font-size:12px">${spillAt}</div>
+      </div>
+      <div class="report-summary-item">
+        <div class="report-summary-label">🛡️ 切换防洪</div>
+        <div class="report-summary-value" style="font-size:12px">${floodAt}</div>
+      </div>
+    `;
+
+    if (report.faultEvents && report.faultEvents.length > 0) {
+      reportFaults.style.display = 'block';
+      let faultHtml = '';
+      report.faultEvents.forEach(f => {
+        faultHtml += '<div class="report-fault-row">';
+        faultHtml += '<span>' + f.label + '</span>';
+        faultHtml += '<span>触发 ' + Math.floor(f.triggeredAt) + 's</span>';
+        faultHtml += '<span>' + (f.resolvedAt !== null ? '解除 ' + Math.floor(f.resolvedAt) + 's' : '未处理') + '</span>';
+        faultHtml += '<span>' + (f.duration !== null ? '耗时 ' + Math.floor(f.duration) + 's' : '—') + '</span>';
+        faultHtml += '</div>';
+      });
+      reportFaultList.innerHTML = faultHtml;
+    } else {
+      reportFaults.style.display = 'none';
+    }
+
+    reportOverlay.classList.add('visible');
+  }
+
+  function hideReportOverlay() {
+    reportOverlay.classList.remove('visible');
+    currentReport = null;
   }
 
   function showAlert(alertData) {
@@ -306,6 +515,27 @@ export function initUI(callbacks) {
     faultLogEntries.innerHTML = html;
   }
 
+  function setWeatherUI(w, s) {
+    weather = w || weather;
+    season = s || season;
+    weatherBtn.innerHTML = weather === 'rain'
+      ? '<span class="weather-icon">🌧️</span> 天气：下雨'
+      : '<span class="weather-icon">☀️</span> 天气：晴天';
+    if (weather === 'rain') weatherBtn.classList.add('active');
+    else weatherBtn.classList.remove('active');
+    seasonBtn.innerHTML = season === 'rainy'
+      ? '<span class="season-indicator rainy"></span> 季节：雨季'
+      : '<span class="season-indicator dry"></span> 季节：旱季';
+  }
+
+  function setModeUI(mode) {
+    currentMode = mode;
+    setModeButtons(mode);
+    isManualGate = false;
+    manualIndicator.style.display = 'none';
+    dispatchHint.textContent = (dispatchInfoMap[mode] || dispatchInfoMap.auto).hint;
+  }
+
   return {
     updateDisplay,
     showAlert,
@@ -314,6 +544,12 @@ export function initUI(callbacks) {
     updateDeviationImpact,
     updateDrillPanel,
     updateFaultLog,
+    updateFaultTodoCards,
+    updatePlanInfo,
+    showReportOverlay,
+    hideReportOverlay,
+    setWeatherUI,
+    setModeUI,
     getCurrentMode: () => currentMode
   };
 }

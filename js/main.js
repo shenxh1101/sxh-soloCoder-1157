@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { createSimulation, update, setGateOpening, setWeather, setSeason, startCooling, getAlertMessages, exportCSV, setDispatchMode, repairTurbine, clearPipeBlockage, predictForward, getDeviationImpact, startDrill, stopDrill, getDrillStatus, getFaultLog } from './simulation.js';
+import { createSimulation, update, setGateOpening, setWeather, setSeason, startCooling, getAlertMessages, exportCSV, setDispatchMode, repairTurbine, clearPipeBlockage, predictForward, getDeviationImpact, startDrill, stopDrill, getDrillStatus, getFaultLog, applyDispatchPlan, getActiveFaults, exportDrillReportCSV, DISPATCH_PLANS } from './simulation.js';
 import { createScene, updateScene, setSkyColor } from './scene.js';
 import { initUI } from './ui.js';
 
@@ -60,6 +60,7 @@ const modeLabels = { auto: '自动发电', storage: '蓄水', flood: '防洪' };
 const {
   updateDisplay, showAlert, renderCharts,
   updatePrediction, updateDeviationImpact, updateDrillPanel, updateFaultLog,
+  updateFaultTodoCards, updatePlanInfo, showReportOverlay, setWeatherUI, setModeUI,
   getCurrentMode
 } = initUI({
   onGateChange: (val) => {
@@ -81,21 +82,51 @@ const {
     startDrill(sim, mode);
     if (mode === 'flashFlood') {
       setSkyColor(scene, 'rain');
-      document.getElementById('weather-btn').innerHTML = '<span class="weather-icon">🌧️</span> 天气：下雨';
-      document.getElementById('weather-btn').classList.add('active');
-      document.getElementById('season-btn').innerHTML = '<span class="season-indicator rainy"></span> 季节：雨季';
+      setWeatherUI('rain', 'rainy');
+      setModeUI('auto');
+    }
+    if (mode === 'unitFailure') {
+      setWeatherUI('sunny', 'rainy');
+      setModeUI('auto');
     }
     if (mode === 'emergencySpill') {
       setSkyColor(scene, 'sunny');
-      document.getElementById('weather-btn').innerHTML = '<span class="weather-icon">☀️</span> 天气：晴天';
-      document.getElementById('weather-btn').classList.remove('active');
-      document.getElementById('season-btn').innerHTML = '<span class="season-indicator dry"></span> 季节：旱季';
-      const modeBtns = [document.getElementById('mode-auto'), document.getElementById('mode-storage'), document.getElementById('mode-flood')];
-      modeBtns.forEach(b => b.classList.remove('mode-active'));
-      document.getElementById('mode-flood').classList.add('mode-active');
+      setWeatherUI('sunny', 'dry');
+      setModeUI('flood');
     }
   },
-  onStopDrill: () => stopDrill(sim),
+  onStopDrill: () => {
+    const report = stopDrill(sim);
+    if (report) {
+      showReportOverlay(report);
+    }
+  },
+  onApplyPlan: (planId) => {
+    const result = applyDispatchPlan(sim, planId);
+    if (result) {
+      updatePlanInfo(result);
+      const { plan } = result;
+      setModeUI(plan.mode);
+      setWeatherUI(plan.weather, plan.season);
+      if (plan.weather === 'rain') setSkyColor(scene, 'rain');
+      else setSkyColor(scene, 'sunny');
+    }
+  },
+  onExportReport: (report) => {
+    const csv = exportDrillReportCSV(report);
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const modeLabels = { flashFlood: '暴雨洪峰', unitFailure: '机组故障', emergencySpill: '紧急泄洪' };
+    const modeLabel = modeLabels[report.drillMode] || '演练';
+    link.download = `演练复盘报告_${modeLabel}_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    showAlert({ type: 'info', text: '✅ 演练复盘报告已导出为 CSV 文件！' });
+  },
   onExport: () => {
     const csv = exportCSV(sim);
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
@@ -148,6 +179,9 @@ function animate() {
 
   const faultLog = getFaultLog(sim);
   updateFaultLog(faultLog);
+
+  const activeFaults = getActiveFaults(sim);
+  updateFaultTodoCards(activeFaults, faultLog);
 
   const alerts = getAlertMessages(sim);
   alerts.forEach(a => showAlert(a));

@@ -5,7 +5,8 @@ const RESERVOIR_AREA = 6000;
 const BASE_INFLOW = 50;
 const MAX_GATE_FLOW = 100;
 const SPILLWAY_COEFF = 40;
-const SPILLWAY_FLOOD_COEFF = 70;
+const SPILLWAY_FLOOD_COEFF = 250;
+const FLOOD_SPILL_THRESHOLD = 5.0;
 const MAX_RPM = 500;
 const MAX_POWER_MW = 700;
 const NORMAL_TEMP = 40;
@@ -53,8 +54,17 @@ export function createSimulation() {
     drillStartTime: 0,
     drillGoals: [],
     drillCompleted: false,
+    drillSpillwayOpenedAt: 0,
+    drillFloodModeAt: 0,
+    drillPeakWater: 0,
+    drillMinPower: Infinity,
+    drillHistory: [],
 
-    faultLog: []
+    faultLog: [],
+
+    dispatchPlan: null,
+    planStartTime: 0,
+    planTargetTime: 0
   };
 }
 
@@ -74,18 +84,16 @@ export function update(sim, dt) {
   }
 
   if (sim.drillMode) {
+    trackDrillMetrics(sim);
     checkDrillGoals(sim);
   }
 
   let effectiveGateOpening = sim.gateOpening;
-  if (sim.faults.pipeBlockage.active) {
-    effectiveGateOpening *= 0.3;
-  }
-
+  if (sim.faults.pipeBlockage.active) effectiveGateOpening *= 0.3;
   const gateFlow = effectiveGateOpening * MAX_GATE_FLOW;
 
   let spillFlow = 0;
-  const spillThreshold = sim.dispatchMode === 'flood' ? WARNING_LEVEL - 2 : WARNING_LEVEL;
+  const spillThreshold = sim.dispatchMode === 'flood' ? FLOOD_SPILL_THRESHOLD : WARNING_LEVEL;
   const effectiveSpillCoeff = sim.dispatchMode === 'flood' ? SPILLWAY_FLOOD_COEFF : SPILLWAY_COEFF;
 
   if (sim.waterLevel > spillThreshold) {
@@ -210,7 +218,6 @@ function updateFaultTriggers(sim, dt) {
       }
     }
   }
-
   if (!sim.faults.pipeBlockage.active) {
     sim.faultTriggerTimers.pipeBlockage += dt;
     if (sim.flowRate > 50 && sim.faultTriggerTimers.pipeBlockage > 50) {
@@ -231,14 +238,12 @@ function checkAlerts(sim) {
     { fault: 'pipeBlockage', text: '🚧 故障：输水管堵塞！流量大幅降低，请点击「疏通管道」！' },
     { fault: 'generatorOverheat', text: '🔥 故障：发电机过热！功率减半，请点击「冷却发电机」！' }
   ];
-
   faultAlertPairs.forEach(({ fault, text }) => {
     if (sim.faults[fault].active && !sim.faults[fault].alertSent) {
       sim.alertMessages.push({ type: 'danger', text, id: Date.now() });
       sim.faults[fault].alertSent = true;
     }
   });
-
   if (sim.waterLevel > CRITICAL_LEVEL && !sim.spillwayAlertSent) {
     sim.alertMessages.push({ type: 'danger', text: '🌊 危险：水位超警戒线！泄洪道已开启！', id: Date.now() });
     sim.spillwayAlertSent = true;
@@ -264,6 +269,25 @@ function recordHistory(sim) {
     sim.lastHistoryTime = sim.time;
     if (sim.history.length > 3600) sim.history.shift();
     if (sim.chartHistory.length > 120) sim.chartHistory.shift();
+  }
+}
+
+function trackDrillMetrics(sim) {
+  if (sim.waterLevel > sim.drillPeakWater) sim.drillPeakWater = sim.waterLevel;
+  if (sim.powerOutput < sim.drillMinPower && sim.powerOutput > 0.01) sim.drillMinPower = sim.powerOutput;
+  if (sim.spillwayOpen && sim.drillSpillwayOpenedAt === 0) sim.drillSpillwayOpenedAt = sim.time;
+  if (sim.dispatchMode === 'flood' && sim.drillFloodModeAt === 0) sim.drillFloodModeAt = sim.time;
+
+  if (sim.time - sim.lastHistoryTime >= 1.0) {
+    sim.drillHistory.push({
+      time: sim.time,
+      waterLevel: sim.waterLevel,
+      power: sim.powerOutput,
+      flowRate: sim.flowRate,
+      spillwayOpen: sim.spillwayOpen,
+      dispatchMode: sim.dispatchMode
+    });
+    if (sim.drillHistory.length > 3600) sim.drillHistory.shift();
   }
 }
 
@@ -305,76 +329,150 @@ export function clearPipeBlockage(sim) {
 
 export function predictForward(sim, seconds, mode) {
   let level = sim.waterLevel;
-  let gate = sim.gateOpening;
   let inflow = sim.reservoirInflow;
-  let dt = 0.5;
-  let steps = Math.floor(seconds / dt);
+  const dt = 0.5;
+  const steps = Math.floor(seconds / dt);
 
-  let predictedGate = gate;
+  let predictedGate;
   if (mode === 'auto') predictedGate = 0.55;
   else if (mode === 'storage') predictedGate = 0.05;
   else if (mode === 'flood') predictedGate = 1.0;
+  else predictedGate = sim.gateOpening;
 
   let effectiveGate = predictedGate;
   if (sim.faults.pipeBlockage.active) effectiveGate *= 0.3;
+  const gateFlow = effectiveGate * MAX_GATE_FLOW;
+  const spillThreshold = (mode === 'flood') ? FLOOD_SPILL_THRESHOLD : WARNING_LEVEL;
+  const spillCoeff = (mode === 'flood') ? SPILLWAY_FLOOD_COEFF : SPILLWAY_COEFF;
 
-  let gateFlow = effectiveGate * MAX_GATE_FLOW;
   let spillFlow = 0;
-  let spillThreshold = (mode === 'flood') ? WARNING_LEVEL - 2 : WARNING_LEVEL;
-  let spillCoeff = (mode === 'flood') ? SPILLWAY_FLOOD_COEFF : SPILLWAY_COEFF;
-
   for (let i = 0; i < steps; i++) {
-    if (level > spillThreshold) {
-      spillFlow = (level - spillThreshold) * spillCoeff;
-    } else {
-      spillFlow = 0;
-    }
-    let totalOut = gateFlow + spillFlow;
-    level += ((inflow - totalOut) / RESERVOIR_AREA) * dt;
+    spillFlow = level > spillThreshold ? (level - spillThreshold) * spillCoeff : 0;
+    level += ((inflow - gateFlow - spillFlow) / RESERVOIR_AREA) * dt;
     if (level < 0.5) level = 0.5;
     if (level > MAX_WATER_LEVEL) level = MAX_WATER_LEVEL;
-
-    gateFlow = effectiveGate * MAX_GATE_FLOW;
-    if (sim.faults.turbineSeizure.active) {
-      // prediction accounts for fault
-    }
   }
 
-  let predictedRPM = (gateFlow / MAX_GATE_FLOW) * MAX_RPM;
-  if (sim.faults.turbineSeizure.active) predictedRPM *= 0.05;
-  let predictedPower = (predictedRPM / MAX_RPM) * MAX_POWER_MW;
+  const predictedRPM = sim.faults.turbineSeizure.active ? (gateFlow / MAX_GATE_FLOW) * MAX_RPM * 0.05 : (gateFlow / MAX_GATE_FLOW) * MAX_RPM;
+  const predictedPower = (predictedRPM / MAX_RPM) * MAX_POWER_MW;
 
-  return {
-    waterLevel: level,
-    flowRate: gateFlow,
-    power: predictedPower,
-    spillwayFlow: spillFlow,
-    spillwayOpen: level > spillThreshold
-  };
+  return { waterLevel: level, flowRate: gateFlow, power: predictedPower, spillwayFlow: spillFlow, spillwayOpen: level > spillThreshold };
 }
 
 export function getDeviationImpact(sim, currentGate) {
   const recommended = sim.recommendedGate;
   const diff = currentGate - recommended;
-
-  let predicted = predictForward(sim, 60, sim.dispatchMode);
-  let recommendedPredicted = predictForward(sim, 60, sim.dispatchMode);
-
   let impact = '';
-  if (diff > 0.2) {
-    impact = `闸门偏大 ${(diff*100).toFixed(0)}%，预计水位下降加快，发电功率偏高`;
-  } else if (diff < -0.1) {
-    impact = `闸门偏小 ${(Math.abs(diff)*100).toFixed(0)}%，水位可能上升，功率不足`;
-  } else if (Math.abs(diff) > 0.05) {
-    impact = `闸门略有偏差 ${(diff>0?'+':'')+(diff*100).toFixed(0)}%`;
+  if (diff > 0.2) impact = `闸门偏大 ${(diff*100).toFixed(0)}%，预计水位下降加快，发电功率偏高`;
+  else if (diff < -0.1) impact = `闸门偏小 ${(Math.abs(diff)*100).toFixed(0)}%，水位可能上升，功率不足`;
+  else if (Math.abs(diff) > 0.05) impact = `闸门略有偏差 ${(diff>0?'+':'')+(diff*100).toFixed(0)}%`;
+  return { gateDiff: diff, impact };
+}
+
+export const DISPATCH_PLANS = {
+  storm: {
+    id: 'storm',
+    label: '🌧️ 暴雨防汛',
+    desc: '全开闸门泄洪，提前开启泄洪道，快速降低水位',
+    mode: 'flood',
+    gate: 1.0,
+    weather: 'rain',
+    season: 'rainy',
+    target: '水位降至7m以下'
+  },
+  drought: {
+    id: 'drought',
+    label: '💧 旱季保供',
+    desc: '关闭闸门蓄水，维持水库库容，保障供水',
+    mode: 'storage',
+    gate: 0.05,
+    weather: 'sunny',
+    season: 'dry',
+    target: '水位稳定不跌'
+  },
+  emergency: {
+    id: 'emergency',
+    label: '🚨 紧急降水位',
+    desc: '极端措施，闸门泄洪全开，最快速度排水',
+    mode: 'flood',
+    gate: 1.0,
+    weather: 'sunny',
+    season: 'dry',
+    target: '水位降至6m以下'
+  }
+};
+
+export function calculatePlanETA(sim, plan) {
+  const targetWeather = plan.weather || sim.weather;
+  const targetSeason = plan.season || sim.season;
+
+  let inflow = BASE_INFLOW;
+  if (targetWeather === 'rain') inflow *= 3.5;
+  if (targetSeason === 'rainy') inflow *= 1.8;
+  else inflow *= 0.4;
+  if (targetWeather === 'rain' && targetSeason === 'rainy') inflow *= 1.8;
+
+  const gate = plan.gate;
+  const mode = plan.mode;
+  const spillThreshold = mode === 'flood' ? FLOOD_SPILL_THRESHOLD : WARNING_LEVEL;
+  const spillCoeff = mode === 'flood' ? SPILLWAY_FLOOD_COEFF : SPILLWAY_COEFF;
+  const targetLevel = plan.id === 'emergency' ? 6.0 : plan.id === 'storm' ? 7.0 : sim.waterLevel;
+
+  let level = sim.waterLevel;
+  let simTime = 0;
+  const dt = 0.5;
+  let gateFlow = gate * MAX_GATE_FLOW;
+  let maxIter = 10000;
+
+  while (maxIter-- > 0) {
+    const spillFlow = level > spillThreshold ? (level - spillThreshold) * spillCoeff : 0;
+    level += ((inflow - gateFlow - spillFlow) / RESERVOIR_AREA) * dt;
+    simTime += dt;
+
+    if (plan.id === 'storm' || plan.id === 'emergency') {
+      if (level <= targetLevel) break;
+    } else {
+      if (level >= 9.0) break;
+    }
+    if (level >= MAX_WATER_LEVEL || level <= 0.5) break;
+    if (simTime > 600) break;
   }
 
+  let predicted = predictForward(sim, Math.min(simTime, 60), mode);
+
   return {
-    predicted,
-    recommendedPredicted,
-    impact,
-    gateDiff: diff
+    targetLevel,
+    etaSec: Math.round(simTime),
+    canReach: simTime < 600,
+    predicted60s: predicted,
+    netFlow: inflow - gate * MAX_GATE_FLOW
   };
+}
+
+export function applyDispatchPlan(sim, planId) {
+  const plan = DISPATCH_PLANS[planId];
+  if (!plan) return null;
+
+  sim.dispatchMode = plan.mode;
+  sim.gateOpening = plan.gate;
+  sim.manualGateOverride = false;
+
+  if (plan.weather) sim.weather = plan.weather;
+  if (plan.season) sim.season = plan.season;
+
+  sim.dispatchPlan = planId;
+  sim.planStartTime = sim.time;
+
+  const eta = calculatePlanETA(sim, plan);
+  sim.planTargetTime = sim.time + eta.etaSec;
+
+  sim.alertMessages.push({
+    type: 'info',
+    text: `📋 已应用预案「${plan.label}」：${plan.desc}，预计 ${eta.etaSec} 秒达标`,
+    id: Date.now()
+  });
+
+  return { plan, eta };
 }
 
 export function startDrill(sim, mode) {
@@ -383,6 +481,11 @@ export function startDrill(sim, mode) {
   sim.drillCompleted = false;
   sim.faultLog = [];
   sim.alertMessages = [];
+  sim.drillPeakWater = sim.waterLevel;
+  sim.drillMinPower = 700;
+  sim.drillSpillwayOpenedAt = 0;
+  sim.drillFloodModeAt = 0;
+  sim.drillHistory = [];
 
   switch (mode) {
     case 'flashFlood':
@@ -392,6 +495,7 @@ export function startDrill(sim, mode) {
       sim.gateOpening = 0.4;
       sim.dispatchMode = 'auto';
       sim.manualGateOverride = false;
+      sim.drillPeakWater = 7.2;
       sim.drillGoals = [
         { label: '水位超过警戒线（8m）', key: 'waterCrossWarning', done: false },
         { label: '泄洪道自动开启', key: 'spillwayActivated', done: false },
@@ -409,6 +513,7 @@ export function startDrill(sim, mode) {
       sim.dispatchMode = 'auto';
       sim.manualGateOverride = false;
       sim.temperature = 105;
+      sim.drillPeakWater = 6.0;
       sim.faults.turbineSeizure.active = true;
       sim.faults.turbineSeizure.detectedAt = sim.time;
       sim.faultTriggerTimers.turbineSeizure = 0;
@@ -437,6 +542,7 @@ export function startDrill(sim, mode) {
       sim.gateOpening = 1.0;
       sim.dispatchMode = 'flood';
       sim.manualGateOverride = false;
+      sim.drillPeakWater = 8.5;
       sim.drillGoals = [
         { label: '泄洪道已开启', key: 'spillwayOpen', done: false },
         { label: '水位降至警戒线以下（<8m）', key: 'waterBelowWarning', done: false },
@@ -448,53 +554,72 @@ export function startDrill(sim, mode) {
 }
 
 export function stopDrill(sim) {
-  if (!sim.drillMode) return;
-  sim.alertMessages.push({ type: 'info', text: sim.drillCompleted ? '🏆 演练完成！所有目标已达成。' : '⏹️ 演练已手动终止。', id: Date.now() });
+  if (!sim.drillMode) return null;
+  const report = generateDrillReport(sim);
+  const wasCompleted = sim.drillCompleted;
   sim.drillMode = null;
   sim.drillGoals = [];
   sim.drillCompleted = false;
+  sim.alertMessages.push({ type: 'info', text: wasCompleted ? '🏆 演练完成！所有目标已达成。' : '⏹️ 演练已手动终止。', id: Date.now() });
+  return report;
+}
+
+function generateDrillReport(sim) {
+  const elapsed = sim.time - sim.drillStartTime;
+  const faultEvents = [];
+  const groupedByType = {};
+  sim.faultLog.forEach(entry => {
+    if (!groupedByType[entry.fault]) groupedByType[entry.fault] = { label: entry.label, triggeredAt: 0, resolvedAt: 0 };
+    if (entry.event === 'triggered') groupedByType[entry.fault].triggeredAt = entry.time;
+    if (entry.event === 'resolved') groupedByType[entry.fault].resolvedAt = entry.time;
+  });
+
+  Object.entries(groupedByType).forEach(([key, val]) => {
+    faultEvents.push({
+      fault: key,
+      label: val.label,
+      triggeredAt: val.triggeredAt - sim.drillStartTime,
+      resolvedAt: val.resolvedAt > 0 ? val.resolvedAt - sim.drillStartTime : null,
+      duration: val.resolvedAt > 0 ? (val.resolvedAt - val.triggeredAt) : null
+    });
+  });
+
+  const goalsCompleted = sim.drillGoals.filter(g => g.done).length;
+
+  return {
+    drillMode: sim.drillMode,
+    modeLabels: { flashFlood: '暴雨洪峰', unitFailure: '机组故障', emergencySpill: '紧急泄洪' },
+    startTime: sim.drillStartTime,
+    elapsed,
+    maxWaterLevel: sim.drillPeakWater,
+    minPower: sim.drillMinPower >= 699 ? 0 : sim.drillMinPower,
+    spillwayOpenedAt: sim.drillSpillwayOpenedAt > 0 ? sim.drillSpillwayOpenedAt - sim.drillStartTime : null,
+    floodModeAt: sim.drillFloodModeAt > 0 ? sim.drillFloodModeAt - sim.drillStartTime : null,
+    goalsCompleted,
+    totalGoals: sim.drillGoals.length,
+    completed: sim.drillCompleted,
+    faultEvents,
+    history: sim.drillHistory
+  };
 }
 
 function checkDrillGoals(sim) {
   let allDone = true;
-
   sim.drillGoals.forEach(goal => {
     if (goal.done) return;
-
     switch (goal.key) {
-      case 'waterCrossWarning':
-        goal.done = sim.waterLevel > WARNING_LEVEL;
-        break;
-      case 'spillwayActivated':
-      case 'spillwayOpen':
-        goal.done = sim.spillwayOpen;
-        break;
-      case 'floodModeActivated':
-        goal.done = sim.dispatchMode === 'flood';
-        break;
-      case 'waterBackSafe':
-      case 'waterBelowWarning':
-        goal.done = sim.waterLevel < WARNING_LEVEL && sim.drillGoals.find(g => g.key === 'spillwayActivated' || g.key === 'spillwayOpen')?.done;
-        break;
-      case 'waterStable':
-        goal.done = sim.waterLevel < 7.0;
-        break;
-      case 'turbineFixed':
-        goal.done = !sim.faults.turbineSeizure.active;
-        break;
-      case 'pipeFixed':
-        goal.done = !sim.faults.pipeBlockage.active;
-        break;
-      case 'tempRecovered':
-        goal.done = sim.temperature < 80;
-        break;
-      case 'powerRestored':
-        goal.done = sim.powerOutput > 200;
-        break;
+      case 'waterCrossWarning': goal.done = sim.waterLevel > WARNING_LEVEL; break;
+      case 'spillwayActivated': case 'spillwayOpen': goal.done = sim.spillwayOpen; break;
+      case 'floodModeActivated': goal.done = sim.dispatchMode === 'flood'; break;
+      case 'waterBackSafe': case 'waterBelowWarning': goal.done = sim.waterLevel < WARNING_LEVEL && sim.drillGoals.find(g => g.key === 'spillwayActivated' || g.key === 'spillwayOpen')?.done; break;
+      case 'waterStable': goal.done = sim.waterLevel < 7.0; break;
+      case 'turbineFixed': goal.done = !sim.faults.turbineSeizure.active; break;
+      case 'pipeFixed': goal.done = !sim.faults.pipeBlockage.active; break;
+      case 'tempRecovered': goal.done = sim.temperature < 80; break;
+      case 'powerRestored': goal.done = sim.powerOutput > 200; break;
     }
     if (!goal.done) allDone = false;
   });
-
   if (allDone && !sim.drillCompleted) {
     sim.drillCompleted = true;
     sim.alertMessages.push({ type: 'info', text: '🏆 演练完成！所有目标已达成！', id: Date.now() });
@@ -505,19 +630,24 @@ export function getDrillStatus(sim) {
   if (!sim.drillMode) return null;
   const elapsed = sim.time - sim.drillStartTime;
   const doneCount = sim.drillGoals.filter(g => g.done).length;
-  const totalCount = sim.drillGoals.length;
   return {
     mode: sim.drillMode,
     elapsed,
     goals: sim.drillGoals,
     doneCount,
-    totalCount,
+    totalCount: sim.drillGoals.length,
     completed: sim.drillCompleted
   };
 }
 
-export function getFaultLog(sim) {
-  return sim.faultLog;
+export function getFaultLog(sim) { return sim.faultLog; }
+
+export function getActiveFaults(sim) {
+  const result = [];
+  if (sim.faults.turbineSeizure.active) result.push({ type: 'turbineSeizure', label: '水轮机卡滞', detectedAt: sim.faults.turbineSeizure.detectedAt });
+  if (sim.faults.pipeBlockage.active) result.push({ type: 'pipeBlockage', label: '输水管堵塞', detectedAt: sim.faults.pipeBlockage.detectedAt });
+  if (sim.faults.generatorOverheat.active) result.push({ type: 'generatorOverheat', label: '发电机过热', detectedAt: sim.faults.generatorOverheat.detectedAt });
+  return result;
 }
 
 export function getAlertMessages(sim) {
@@ -532,4 +662,35 @@ export function exportCSV(sim) {
     `${h.time.toFixed(1)},${h.power.toFixed(2)},${h.waterLevel.toFixed(2)},${h.flowRate.toFixed(2)},${h.temperature.toFixed(1)},${h.weather},${h.season},${h.dispatchMode},${h.spillwayOpen ? '是' : '否'}`
   );
   return [headers, ...rows].join('\n');
+}
+
+export function exportDrillReportCSV(report) {
+  const modeLabel = report.modeLabels[report.drillMode] || report.drillMode;
+  const min = Math.floor(report.elapsed / 60);
+  const sec = Math.floor(report.elapsed % 60);
+
+  let lines = [];
+  lines.push(`演练复盘报告 - ${modeLabel}`);
+  lines.push(`================`);
+  lines.push(`完成状态,${report.completed ? '全部完成' : '未完成'} (${report.goalsCompleted}/${report.totalGoals})`);
+  lines.push(`总耗时,${min}分${sec}秒`);
+  lines.push(`最高水位,${report.maxWaterLevel.toFixed(2)}m`);
+  lines.push(`最低功率,${report.minPower.toFixed(2)}MW`);
+  lines.push(`泄洪开启时间,${report.spillwayOpenedAt ? report.spillwayOpenedAt.toFixed(0) + '秒' : '未触发'}`);
+  lines.push(`切换防洪时间,${report.floodModeAt ? report.floodModeAt.toFixed(0) + '秒' : '未切换'}`);
+  lines.push(``);
+  lines.push(`事故处理记录`);
+  report.faultEvents.forEach(f => {
+    const dur = f.duration ? f.duration.toFixed(0) + '秒' : '未处理';
+    lines.push(`${f.label},触发:${f.triggeredAt.toFixed(0)}s,解除:${f.resolvedAt ? f.resolvedAt.toFixed(0) + 's' : '—'},耗时:${dur}`);
+  });
+  lines.push(``);
+  lines.push(`时间(s),水位(m),功率(MW),流量(m³/s),泄洪`);
+  if (report.history) {
+    report.history.forEach(h => {
+      lines.push(`${h.time.toFixed(1)},${h.waterLevel.toFixed(2)},${h.power.toFixed(2)},${h.flowRate.toFixed(2)},${h.spillwayOpen ? '是' : '否'}`);
+    });
+  }
+
+  return lines.join('\n');
 }

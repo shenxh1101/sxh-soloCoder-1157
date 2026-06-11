@@ -88,6 +88,42 @@
     .dispatch-hint { font-size: 9px; color: rgba(160,185,230,0.35); text-align: center; margin-top: -3px; }
     .impact-text { font-size: 9px; color: #fdcb6e; text-align: center; margin-top: 2px; display: none; }
     .impact-text.show { display: block; }
+
+    /* 调度预案面板样式 */
+    #plan-panel { margin-top: 2px; }
+    .plan-btn { font-size: 10px; padding: 6px 8px; margin: 2px 0; }
+    .plan-btn.active { background: linear-gradient(135deg, #205030, #307050); border-color: #40d080; box-shadow: 0 0 8px rgba(64,208,128,0.3); }
+    .plan-info { font-size: 9px; color: rgba(160,185,230,0.7); padding: 4px 6px; background: rgba(0,0,0,0.2); border-radius: 4px; margin-top: 4px; line-height: 1.5; }
+    .plan-info .eta { color: #40d080; font-weight: 600; }
+
+    /* 故障待办卡片样式 */
+    #fault-todo-panel { margin-top: 2px; }
+    .todo-section { margin-top: 4px; }
+    .todo-section-title { font-size: 10px; color: rgba(160,185,230,0.6); padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 3px; }
+    .todo-card { display: flex; justify-content: space-between; align-items: center; padding: 5px 6px; margin: 2px 0; border-radius: 5px; border-left: 3px solid; background: rgba(255,255,255,0.03); }
+    .todo-card.active { border-left-color: #e94560; background: rgba(233,69,96,0.08); }
+    .todo-card.completed { border-left-color: #00b894; background: rgba(0,184,148,0.05); opacity: 0.6; }
+    .todo-label { font-size: 10px; color: rgba(200,210,240,0.9); }
+    .todo-card.completed .todo-label { color: rgba(160,185,230,0.6); text-decoration: line-through; }
+    .todo-time { font-size: 8px; color: rgba(160,185,230,0.4); margin-top: 1px; }
+    .todo-btn { font-size: 9px; padding: 2px 6px; width: auto; border-radius: 4px; }
+    .todo-card.completed .todo-btn { display: none; }
+
+    /* 演练复盘报告弹窗 */
+    #report-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.7); z-index: 100; display: none; justify-content: center; align-items: center; }
+    #report-overlay.visible { display: flex; }
+    #report-panel { background: rgba(10, 10, 30, 0.96); backdrop-filter: blur(16px); border: 1px solid rgba(100, 140, 255, 0.35); border-radius: 16px; padding: 18px; width: 90%; max-width: 520px; max-height: 80vh; overflow-y: auto; box-shadow: 0 8px 48px rgba(0,0,0,0.6); }
+    #report-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    #report-title { font-size: 16px; font-weight: 700; color: #b080e0; }
+    #report-close { width: auto; padding: 4px 10px; font-size: 12px; margin: 0; }
+    .report-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+    .report-summary-item { background: rgba(0,0,0,0.2); padding: 8px; border-radius: 6px; }
+    .report-summary-label { font-size: 10px; color: rgba(160,185,230,0.6); }
+    .report-summary-value { font-size: 14px; font-weight: 600; color: #64b5f6; margin-top: 2px; }
+    .report-faults { margin-bottom: 12px; }
+    .report-fault-title { font-size: 12px; color: #f0a040; margin-bottom: 4px; }
+    .report-fault-row { display: flex; justify-content: space-between; font-size: 10px; padding: 3px 0; color: rgba(200,210,240,0.8); border-bottom: 1px solid rgba(255,255,255,0.05); }
+    #export-report-btn { margin-top: 8px; background: linear-gradient(135deg, #206030, #308050); border-color: rgba(64,208,128,0.5); }
   </style>
 </head>
 <body>
@@ -128,11 +164,30 @@
       <button class="drill-btn" id="drill-spill">🌊 紧急泄洪演练</button>
       <button class="drill-stop" id="drill-stop" style="display:none">⏹️ 终止当前演练</button>
 
+      <div class="panel-title" style="font-size:10px;margin-top:2px;color:#40d080;border-color:rgba(64,208,128,0.25)">📋 调度预案</div>
+      <div id="plan-panel">
+        <button class="plan-btn" id="plan-storm">🌧️ 暴雨防汛预案</button>
+        <button class="plan-btn" id="plan-drought">💧 旱季保供预案</button>
+        <button class="plan-btn" id="plan-emergency">🚨 紧急降水位预案</button>
+        <div class="plan-info" id="plan-info" style="display:none"></div>
+      </div>
+
       <div class="fault-group">
         <div class="panel-title" style="font-size:10px;margin-top:2px">⚠️ 故障状态</div>
         <div class="fault-row"><span><span class="fault-dot ok" id="dot-turbine"></span>水轮机卡滞</span><button class="fault-btn repair-btn" id="repair-turbine" disabled>维修</button></div>
         <div class="fault-row"><span><span class="fault-dot ok" id="dot-pipe"></span>输水管堵塞</span><button class="fault-btn repair-btn" id="repair-pipe" disabled>疏通</button></div>
         <div class="fault-row"><span><span class="fault-dot ok" id="dot-overheat"></span>发电机过热</span><button class="fault-btn cool-btn" id="cool-btn" disabled>冷却</button></div>
+      </div>
+
+      <div id="fault-todo-panel">
+        <div class="todo-section" id="todo-active-section">
+          <div class="todo-section-title">🔴 待处理故障</div>
+          <div id="todo-active-list"></div>
+        </div>
+        <div class="todo-section" id="todo-completed-section">
+          <div class="todo-section-title">✅ 已完成处理</div>
+          <div id="todo-completed-list"></div>
+        </div>
       </div>
 
       <button id="export-btn">📊 导出运行数据 CSV</button>
@@ -163,6 +218,21 @@
 
     <div id="alert-overlay"></div>
     <div id="bottom-info">💡 鼠标拖拽旋转 | 滚轮缩放 | 右键平移 | 调度/演练模式一键切换 | 冷却完成后过热自动恢复</div>
+
+    <div id="report-overlay">
+      <div id="report-panel">
+        <div id="report-header">
+          <span id="report-title">📊 演练复盘报告</span>
+          <button id="report-close">✕ 关闭</button>
+        </div>
+        <div class="report-summary" id="report-summary"></div>
+        <div class="report-faults" id="report-faults">
+          <div class="report-fault-title">🔧 事故处理记录</div>
+          <div id="report-fault-list"></div>
+        </div>
+        <button id="export-report-btn">📥 导出复盘报告 CSV</button>
+      </div>
+    </div>
   </div>
 
   <script type="importmap">
