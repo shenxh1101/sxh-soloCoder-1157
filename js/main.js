@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { createSimulation, update, setGateOpening, setWeather, setSeason, startCooling, getAlertMessages, exportCSV, setDispatchMode, repairTurbine, clearPipeBlockage } from './simulation.js';
+import { createSimulation, update, setGateOpening, setWeather, setSeason, startCooling, getAlertMessages, exportCSV, setDispatchMode, repairTurbine, clearPipeBlockage, predictForward, getDeviationImpact, startDrill, stopDrill, getDrillStatus, getFaultLog } from './simulation.js';
 import { createScene, updateScene, setSkyColor } from './scene.js';
 import { initUI } from './ui.js';
 
@@ -15,11 +15,7 @@ controls.minDistance = 5;
 controls.maxDistance = 45;
 controls.maxPolarAngle = Math.PI * 0.45;
 controls.minPolarAngle = 0.2;
-controls.mouseButtons = {
-  LEFT: THREE.MOUSE.ROTATE,
-  MIDDLE: THREE.MOUSE.PAN,
-  RIGHT: THREE.MOUSE.PAN
-};
+controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN };
 controls.update();
 
 const sim = createSimulation();
@@ -59,15 +55,47 @@ function switchView(view) {
   controls.enabled = view !== 'internal';
 }
 
-const { updateDisplay, showAlert, renderCharts } = initUI({
-  onGateChange: (val) => setGateOpening(sim, val),
+const modeLabels = { auto: '自动发电', storage: '蓄水', flood: '防洪' };
+
+const {
+  updateDisplay, showAlert, renderCharts,
+  updatePrediction, updateDeviationImpact, updateDrillPanel,
+  getCurrentMode
+} = initUI({
+  onGateChange: (val) => {
+    setGateOpening(sim, val);
+    const deviation = getDeviationImpact(sim, val);
+    updateDeviationImpact(deviation);
+  },
   onWeatherChange: (w) => { setWeather(sim, w); setSkyColor(scene, w); },
   onSeasonChange: (s) => setSeason(sim, s),
   onViewChange: (v) => switchView(v),
-  onDispatchChange: (mode) => setDispatchMode(sim, mode),
+  onDispatchChange: (mode) => {
+    setDispatchMode(sim, mode);
+    manualGateOverride = false;
+  },
   onCoolDown: () => startCooling(sim),
   onRepairTurbine: () => repairTurbine(sim),
   onClearPipe: () => clearPipeBlockage(sim),
+  onStartDrill: (mode) => {
+    startDrill(sim, mode);
+    if (mode === 'flashFlood') {
+      setSkyColor(scene, 'rain');
+      document.getElementById('weather-btn').innerHTML = '<span class="weather-icon">🌧️</span> 天气：下雨';
+      document.getElementById('weather-btn').classList.add('active');
+      document.getElementById('season-btn').innerHTML = '<span class="season-indicator rainy"></span> 季节：雨季';
+    }
+    if (mode === 'emergencySpill') {
+      setSkyColor(scene, 'rain');
+      document.getElementById('weather-btn').innerHTML = '<span class="weather-icon">🌧️</span> 天气：下雨';
+      document.getElementById('weather-btn').classList.add('active');
+      document.getElementById('season-btn').innerHTML = '<span class="season-indicator rainy"></span> 季节：雨季';
+      const modeBtns = [document.getElementById('mode-auto'), document.getElementById('mode-storage'), document.getElementById('mode-flood')];
+      modeBtns.forEach(b => b.classList.remove('mode-active'));
+      document.getElementById('mode-flood').classList.add('mode-active');
+    }
+  },
+  onStopDrill: () => stopDrill(sim),
   onExport: () => {
     const csv = exportCSV(sim);
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
@@ -83,7 +111,9 @@ const { updateDisplay, showAlert, renderCharts } = initUI({
   }
 });
 
+let manualGateOverride = false;
 let lastTime = performance.now();
+let predictionTimer = 0;
 
 function animate() {
   requestAnimationFrame(animate);
@@ -99,11 +129,27 @@ function animate() {
 
   updateDisplay(sim);
 
+  predictionTimer += dt;
+  if (predictionTimer > 0.5) {
+    predictionTimer = 0;
+    const pred = predictForward(sim, 60, sim.dispatchMode);
+    updatePrediction({
+      mode: sim.dispatchMode,
+      modeLabel: modeLabels[sim.dispatchMode],
+      waterLevel: pred.waterLevel,
+      flowRate: pred.flowRate,
+      power: pred.power,
+      spillwayOpen: pred.spillwayOpen
+    });
+  }
+
+  const drillStatus = getDrillStatus(sim);
+  updateDrillPanel(drillStatus);
+
   const alerts = getAlertMessages(sim);
   alerts.forEach(a => showAlert(a));
 
   renderCharts(sim.chartHistory);
-
   renderer.render(scene, camera);
 }
 

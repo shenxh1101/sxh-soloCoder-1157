@@ -6,123 +6,80 @@
   <title>水电站3D模拟 - 发电过程可视化</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
-      background: #0a0a1a; overflow: hidden; height: 100vh; width: 100vw;
-      user-select: none; -webkit-user-select: none;
-    }
+    body { font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif; background: #0a0a1a; overflow: hidden; height: 100vh; width: 100vw; user-select: none; -webkit-user-select: none; }
     #app { position: relative; width: 100%; height: 100%; }
     #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
     canvas { display: block; }
-
-    #top-bar {
-      position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 10;
-      display: flex; gap: 8px;
-      background: rgba(10, 10, 30, 0.88); backdrop-filter: blur(12px);
-      border: 1px solid rgba(100, 140, 255, 0.25); border-radius: 14px;
-      padding: 10px 18px; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
-    }
-    .metric-card {
-      display: flex; flex-direction: column; align-items: center;
-      min-width: 88px; padding: 2px 10px;
-      border-right: 1px solid rgba(255, 255, 255, 0.08);
-    }
+    #top-bar { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 10; display: flex; gap: 8px; background: rgba(10, 10, 30, 0.88); backdrop-filter: blur(12px); border: 1px solid rgba(100, 140, 255, 0.25); border-radius: 14px; padding: 10px 18px; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5); }
+    .metric-card { display: flex; flex-direction: column; align-items: center; min-width: 88px; padding: 2px 10px; border-right: 1px solid rgba(255, 255, 255, 0.08); }
     .metric-card:last-child { border-right: none; }
     .metric-label { font-size: 10px; color: rgba(160, 185, 230, 0.75); letter-spacing: 1px; margin-bottom: 2px; }
-    .metric-value {
-      font-size: 20px; font-weight: 700; color: #dce6ff;
-      font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-    }
+    .metric-value { font-size: 20px; font-weight: 700; color: #dce6ff; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; }
     .metric-unit { font-size: 10px; color: rgba(160, 185, 230, 0.5); margin-left: 1px; }
     .metric-card.warning .metric-value { color: #fdcb6e; }
     .metric-card.danger .metric-value { color: #e94560; animation: pulse 1s ease-in-out infinite; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
 
-    #control-panel {
-      position: absolute; right: 14px; top: 50%; transform: translateY(-50%); z-index: 10;
-      background: rgba(10, 10, 30, 0.88); backdrop-filter: blur(12px);
-      border: 1px solid rgba(100, 140, 255, 0.25); border-radius: 14px;
-      padding: 16px; width: 230px;
-      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
-      display: flex; flex-direction: column; gap: 10px;
-    }
-    .panel-title { font-size: 13px; font-weight: 600; color: #788dc8; text-align: center; letter-spacing: 2px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.08); }
-    .control-group { display: flex; flex-direction: column; gap: 4px; }
+    #control-panel { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); z-index: 10; background: rgba(10, 10, 30, 0.88); backdrop-filter: blur(12px); border: 1px solid rgba(100, 140, 255, 0.25); border-radius: 14px; padding: 14px; width: 230px; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5); display: flex; flex-direction: column; gap: 8px; max-height: 88vh; overflow-y: auto; }
+    .panel-title { font-size: 12px; font-weight: 600; color: #788dc8; text-align: center; letter-spacing: 2px; padding-bottom: 5px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .control-group { display: flex; flex-direction: column; gap: 3px; }
     .control-group label { font-size: 11px; color: rgba(160, 185, 230, 0.7); display: flex; justify-content: space-between; align-items: center; }
     .control-group label .val { color: #64b5f6; font-weight: 600; font-size: 11px; }
-    input[type="range"] {
-      -webkit-appearance: none; width: 100%; height: 5px; border-radius: 3px;
-      background: linear-gradient(90deg, #1a3a6e, #4a90d9); outline: none; cursor: pointer;
-    }
-    input[type="range"]::-webkit-slider-thumb {
-      -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
-      background: #64b5f6; border: 2px solid #1a3a6e; cursor: pointer;
-      box-shadow: 0 0 10px rgba(100, 180, 255, 0.5);
-    }
-    button {
-      background: linear-gradient(135deg, #1a3a6e, #2a5a9e); color: #c8d8f8;
-      border: 1px solid rgba(100, 140, 255, 0.35); border-radius: 8px;
-      padding: 8px 12px; font-size: 11px; cursor: pointer; transition: all 0.25s;
-      font-family: inherit; letter-spacing: 0.5px; width: 100%;
-    }
+    input[type="range"] { -webkit-appearance: none; width: 100%; height: 5px; border-radius: 3px; background: linear-gradient(90deg, #1a3a6e, #4a90d9); outline: none; cursor: pointer; }
+    input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #64b5f6; border: 2px solid #1a3a6e; cursor: pointer; box-shadow: 0 0 10px rgba(100,180,255,0.5); }
+    button { background: linear-gradient(135deg, #1a3a6e, #2a5a9e); color: #c8d8f8; border: 1px solid rgba(100, 140, 255, 0.35); border-radius: 8px; padding: 7px 10px; font-size: 10px; cursor: pointer; transition: all 0.25s; font-family: inherit; letter-spacing: 0.5px; width: 100%; }
     button:hover { background: linear-gradient(135deg, #2a4a8e, #3a6abe); border-color: rgba(100,160,255,0.6); box-shadow: 0 0 12px rgba(100,140,255,0.25); }
     button:active { transform: scale(0.97); }
     button.active { background: linear-gradient(135deg, #0f3460, #1a5276); border-color: #64b5f6; box-shadow: 0 0 10px rgba(100,180,255,0.35); }
     button.danger { background: linear-gradient(135deg, #6e1a1a, #9e2a2a); border-color: rgba(255,100,100,0.4); }
-    button.danger:hover { background: linear-gradient(135deg, #8e2a2a, #be3a3a); box-shadow: 0 0 12px rgba(255,100,100,0.3); }
-    button.cool-btn { background: linear-gradient(135deg, #1a4a6e, #2a7a9e); border-color: rgba(0,180,200,0.4); }
-    button.cool-btn:hover { background: linear-gradient(135deg, #2a6a8e, #3a9abe); box-shadow: 0 0 12px rgba(0,180,200,0.3); }
-    button.cool-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-    button.repair-btn { background: linear-gradient(135deg, #4a6e1a, #5a8e2a); border-color: rgba(100,200,100,0.4); font-size: 10px; padding: 6px 10px; }
-    button.repair-btn:hover { background: linear-gradient(135deg, #5a8e2a, #6aae3a); box-shadow: 0 0 12px rgba(100,200,100,0.3); }
+    button.drill-btn { background: linear-gradient(135deg, #3a2060, #5a3080); border-color: rgba(180,120,255,0.4); font-size: 10px; padding: 6px 8px; }
+    button.drill-btn:hover { background: linear-gradient(135deg, #4a3070, #6a4090); box-shadow: 0 0 10px rgba(180,120,255,0.3); }
+    button.drill-stop { background: linear-gradient(135deg, #503020, #704030); border-color: rgba(255,150,100,0.4); font-size: 10px; padding: 6px 8px; }
 
-    .dispatch-row { display: flex; gap: 6px; }
-    .dispatch-row button { flex: 1; font-size: 10px; padding: 7px 6px; }
+    .dispatch-row { display: flex; gap: 5px; }
+    .dispatch-row button { flex: 1; font-size: 10px; padding: 6px 5px; }
     .dispatch-row button.mode-active { background: linear-gradient(135deg, #0a3050, #1a6080); border-color: #40c0e0; box-shadow: 0 0 8px rgba(64,192,224,0.3); }
 
-    .fault-group { display: flex; flex-direction: column; gap: 5px; }
+    .fault-group { display: flex; flex-direction: column; gap: 4px; }
     .fault-row { display: flex; align-items: center; justify-content: space-between; font-size: 10px; color: rgba(160,185,230,0.7); }
-    .fault-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+    .fault-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 3px; }
     .fault-dot.ok { background: #00b894; box-shadow: 0 0 4px #00b894; }
     .fault-dot.fail { background: #e94560; box-shadow: 0 0 6px #e94560; animation: pulse 0.8s ease-in-out infinite; }
-    .fault-btn { font-size: 10px; padding: 4px 8px; width: auto; border-radius: 6px; }
+    .fault-btn { font-size: 9px; padding: 3px 6px; width: auto; border-radius: 5px; }
 
-    #chart-panel {
-      position: absolute; left: 14px; bottom: 16px; z-index: 10;
-      display: flex; gap: 8px;
-      background: rgba(10, 10, 30, 0.88); backdrop-filter: blur(12px);
-      border: 1px solid rgba(100, 140, 255, 0.25); border-radius: 14px;
-      padding: 12px; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
-    }
+    #chart-panel { position: absolute; left: 14px; bottom: 16px; z-index: 10; display: flex; gap: 8px; background: rgba(10, 10, 30, 0.88); backdrop-filter: blur(12px); border: 1px solid rgba(100, 140, 255, 0.25); border-radius: 14px; padding: 12px; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5); }
     .chart-box { display: flex; flex-direction: column; align-items: center; }
     .chart-title { font-size: 10px; color: rgba(160,185,230,0.65); margin-bottom: 4px; letter-spacing: 1px; }
     .chart-box canvas { border-radius: 6px; background: rgba(0,0,0,0.25); }
 
-    #alert-overlay {
-      position: absolute; top: 100px; left: 50%; transform: translateX(-50%);
-      z-index: 20; display: flex; flex-direction: column; gap: 6px; pointer-events: none;
-    }
-    .alert-toast {
-      background: rgba(233, 69, 96, 0.92); color: white; padding: 10px 22px;
-      border-radius: 8px; font-size: 13px; font-weight: 600; text-align: center;
-      animation: slideIn 0.4s ease-out, fadeOut 0.5s ease-in 3.5s forwards;
-      backdrop-filter: blur(8px); border: 1px solid rgba(255,100,100,0.5);
-      box-shadow: 0 4px 20px rgba(233,69,96,0.4);
-    }
+    #prediction-panel { position: absolute; left: 14px; top: 100px; z-index: 10; background: rgba(10, 10, 30, 0.88); backdrop-filter: blur(12px); border: 1px solid rgba(100, 140, 255, 0.25); border-radius: 12px; padding: 10px 14px; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5); max-width: 260px; }
+    #prediction-content { font-size: 10px; color: rgba(160,185,230,0.75); line-height: 1.6; }
+    #prediction-content .pred-highlight { color: #40c0e0; font-weight: 600; }
+    #prediction-content .pred-warn { color: #fdcb6e; }
+    #prediction-content .pred-danger { color: #e94560; }
+
+    #drill-panel { position: absolute; left: 14px; top: 260px; z-index: 10; background: rgba(10, 10, 30, 0.88); backdrop-filter: blur(12px); border: 1px solid rgba(180, 120, 255, 0.3); border-radius: 12px; padding: 10px 14px; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5); min-width: 240px; display: none; }
+    #drill-panel.visible { display: block; }
+    #drill-panel .drill-header { font-size: 11px; font-weight: 600; color: #b080e0; margin-bottom: 6px; text-align: center; }
+    #drill-goals { display: flex; flex-direction: column; gap: 4px; }
+    .drill-goal { font-size: 10px; color: rgba(180,160,230,0.6); padding: 3px 6px; border-radius: 4px; display: flex; align-items: center; gap: 6px; }
+    .drill-goal.done { color: #00b894; background: rgba(0,184,148,0.08); }
+    .drill-goal .goal-icon { font-size: 11px; }
+
+    #alert-overlay { position: absolute; top: 100px; left: 50%; transform: translateX(-50%); z-index: 20; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+    .alert-toast { background: rgba(233, 69, 96, 0.92); color: white; padding: 10px 22px; border-radius: 8px; font-size: 13px; font-weight: 600; text-align: center; animation: slideIn 0.4s ease-out, fadeOut 0.5s ease-in 3.5s forwards; backdrop-filter: blur(8px); border: 1px solid rgba(255,100,100,0.5); box-shadow: 0 4px 20px rgba(233,69,96,0.4); }
     .alert-toast.info { background: rgba(0, 150, 199, 0.92); border-color: rgba(100,200,255,0.5); box-shadow: 0 4px 20px rgba(0,150,199,0.4); }
     @keyframes slideIn { from{transform:translateY(-20px);opacity:0} to{transform:translateY(0);opacity:1} }
     @keyframes fadeOut { from{opacity:1} to{opacity:0} }
 
-    #bottom-info {
-      position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
-      z-index: 10; font-size: 10px; color: rgba(160,185,230,0.4); letter-spacing: 1px;
-    }
+    #bottom-info { position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%); z-index: 10; font-size: 9px; color: rgba(160,185,230,0.35); letter-spacing: 1px; }
     .season-indicator { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 3px; vertical-align: middle; }
     .season-indicator.rainy { background: #4a90d9; box-shadow: 0 0 6px #4a90d9; }
     .season-indicator.dry { background: #e9a04a; box-shadow: 0 0 6px #e9a04a; }
     .weather-icon { font-size: 14px; vertical-align: middle; margin-right: 3px; }
-
-    .dispatch-hint { font-size: 9px; color: rgba(160,185,230,0.45); text-align: center; margin-top: -4px; }
+    .dispatch-hint { font-size: 9px; color: rgba(160,185,230,0.35); text-align: center; margin-top: -3px; }
+    .impact-text { font-size: 9px; color: #fdcb6e; text-align: center; margin-top: 2px; display: none; }
+    .impact-text.show { display: block; }
   </style>
 </head>
 <body>
@@ -145,7 +102,8 @@
         <button id="mode-storage">💧 蓄水</button>
         <button id="mode-flood">🌊 防洪</button>
       </div>
-      <div class="dispatch-hint" id="dispatch-hint">推荐闸门: 55% | 泄洪: 关闭</div>
+      <div class="dispatch-hint" id="dispatch-hint"></div>
+      <div class="impact-text" id="impact-text"></div>
 
       <div class="control-group">
         <label>闸门开度 <span class="val" id="gate-val">50%</span> <span id="manual-indicator" style="font-size:9px;color:#fdcb6e;display:none">⚡手动</span></label>
@@ -156,14 +114,30 @@
       <button id="season-btn"><span class="season-indicator rainy"></span> 季节：雨季</button>
       <button id="view-btn">🏗️ 视角：外部全景</button>
 
+      <div class="panel-title" style="font-size:10px;margin-top:2px;color:#b080e0;border-color:rgba(180,120,255,0.2)">🎯 应急演练</div>
+      <button class="drill-btn" id="drill-flashflood">🌧️ 暴雨洪峰演练</button>
+      <button class="drill-btn" id="drill-failure">🔧 机组故障演练</button>
+      <button class="drill-btn" id="drill-spill">🌊 紧急泄洪演练</button>
+      <button class="drill-stop" id="drill-stop" style="display:none">⏹️ 终止当前演练</button>
+
       <div class="fault-group">
-        <div class="panel-title" style="font-size:11px;margin-top:2px">⚠️ 故障状态</div>
+        <div class="panel-title" style="font-size:10px;margin-top:2px">⚠️ 故障状态</div>
         <div class="fault-row"><span><span class="fault-dot ok" id="dot-turbine"></span>水轮机卡滞</span><button class="fault-btn repair-btn" id="repair-turbine" disabled>维修</button></div>
         <div class="fault-row"><span><span class="fault-dot ok" id="dot-pipe"></span>输水管堵塞</span><button class="fault-btn repair-btn" id="repair-pipe" disabled>疏通</button></div>
         <div class="fault-row"><span><span class="fault-dot ok" id="dot-overheat"></span>发电机过热</span><button class="fault-btn cool-btn" id="cool-btn" disabled>冷却</button></div>
       </div>
 
       <button id="export-btn">📊 导出运行数据 CSV</button>
+    </div>
+
+    <div id="prediction-panel">
+      <div id="prediction-content">⏳ 等待调度模式激活...</div>
+    </div>
+
+    <div id="drill-panel">
+      <div class="drill-header" id="drill-header">🎯 演练进行中</div>
+      <div id="drill-goals"></div>
+      <div style="font-size:9px;color:rgba(180,160,230,0.4);margin-top:6px;text-align:center" id="drill-progress"></div>
     </div>
 
     <div id="chart-panel">
@@ -173,7 +147,7 @@
     </div>
 
     <div id="alert-overlay"></div>
-    <div id="bottom-info">💡 鼠标拖拽旋转 | 滚轮缩放 | 右键平移 | 调度模式自动管理闸门</div>
+    <div id="bottom-info">💡 鼠标拖拽旋转 | 滚轮缩放 | 右键平移 | 调度/演练模式一键切换 | 冷却完成后过热自动恢复</div>
   </div>
 
   <script type="importmap">

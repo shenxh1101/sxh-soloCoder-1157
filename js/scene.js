@@ -636,18 +636,24 @@ function updateTurbineRotation(obj, state) {
 function updateSpillway(obj, state, dt) {
   if (!obj.spillwayLeftGate) return;
 
+  const spillIntensity = state.spillwayOpen ? Math.min(1, state.spillwayFlow / 50) : 0;
+
   if (state.spillwayOpen) {
-    obj.spillwayLeftGate.position.y += (7.8 - obj.spillwayLeftGate.position.y) * 0.08;
-    obj.spillwayRightGate.position.y += (7.8 - obj.spillwayRightGate.position.y) * 0.08;
+    obj.spillwayLeftGate.position.y += (7.8 - obj.spillwayLeftGate.position.y) * 0.1;
+    obj.spillwayRightGate.position.y += (7.8 - obj.spillwayRightGate.position.y) * 0.1;
     obj.spillwayLeftWater.visible = true;
     obj.spillwayRightWater.visible = true;
-    obj.spillwayLeftWater.material.opacity = Math.min(0.7, state.spillwayFlow / 80);
-    obj.spillwayRightWater.material.opacity = Math.min(0.7, state.spillwayFlow / 80);
+    obj.spillwayLeftWater.material.opacity += (spillIntensity * 0.8 - obj.spillwayLeftWater.material.opacity) * 0.15;
+    obj.spillwayRightWater.material.opacity += (spillIntensity * 0.8 - obj.spillwayRightWater.material.opacity) * 0.15;
   } else {
-    obj.spillwayLeftGate.position.y += (9.8 - obj.spillwayLeftGate.position.y) * 0.08;
-    obj.spillwayRightGate.position.y += (9.8 - obj.spillwayRightGate.position.y) * 0.08;
-    obj.spillwayLeftWater.visible = false;
-    obj.spillwayRightWater.visible = false;
+    obj.spillwayLeftGate.position.y += (9.8 - obj.spillwayLeftGate.position.y) * 0.1;
+    obj.spillwayRightGate.position.y += (9.8 - obj.spillwayRightGate.position.y) * 0.1;
+    obj.spillwayLeftWater.material.opacity *= 0.9;
+    obj.spillwayRightWater.material.opacity *= 0.9;
+    if (obj.spillwayLeftWater.material.opacity < 0.02) {
+      obj.spillwayLeftWater.visible = false;
+      obj.spillwayRightWater.visible = false;
+    }
   }
 }
 
@@ -683,10 +689,11 @@ function updateRain(obj, state, dt) {
 function updateMist(obj, state, dt) {
   if (!obj.mistParticles) return;
 
-  const targetOpacity = state.spillwayOpen ? 0.5 : 0;
-  obj.mistParticles.material.opacity += (targetOpacity - obj.mistParticles.material.opacity) * 0.08;
+  const spillIntensity = state.spillwayOpen ? Math.min(1, state.spillwayFlow / 60) : 0;
+  const targetOpacity = spillIntensity * 0.7;
+  obj.mistParticles.material.opacity += (targetOpacity - obj.mistParticles.material.opacity) * 0.12;
 
-  if (!state.spillwayOpen && obj.mistParticles.material.opacity < 0.01) return;
+  if (obj.mistParticles.material.opacity < 0.005) return;
 
   const positions = obj.mistParticles.geometry.attributes.position;
   const velocities = obj.mistParticles.userData.velocities;

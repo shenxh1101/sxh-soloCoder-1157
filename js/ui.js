@@ -26,6 +26,8 @@ export function initUI(callbacks) {
   const coolBtn = document.getElementById('cool-btn');
   const exportBtn = document.getElementById('export-btn');
   const dispatchHint = document.getElementById('dispatch-hint');
+  const impactText = document.getElementById('impact-text');
+  const predictionContent = document.getElementById('prediction-content');
 
   const valWater = document.getElementById('val-water');
   const valRpm = document.getElementById('val-rpm');
@@ -46,6 +48,15 @@ export function initUI(callbacks) {
   const dotOverheat = document.getElementById('dot-overheat');
   const repairTurbineBtn = document.getElementById('repair-turbine');
   const repairPipeBtn = document.getElementById('repair-pipe');
+
+  const drillFlashFlood = document.getElementById('drill-flashflood');
+  const drillFailure = document.getElementById('drill-failure');
+  const drillSpill = document.getElementById('drill-spill');
+  const drillStop = document.getElementById('drill-stop');
+  const drillPanel = document.getElementById('drill-panel');
+  const drillHeader = document.getElementById('drill-header');
+  const drillGoals = document.getElementById('drill-goals');
+  const drillProgress = document.getElementById('drill-progress');
 
   let weather = 'sunny';
   let season = 'rainy';
@@ -68,13 +79,20 @@ export function initUI(callbacks) {
     if (mode === 'flood') modeFlood.classList.add('mode-active');
   }
 
+  const dispatchInfoMap = {
+    auto: { hint: '推荐闸门: 55% | 泄洪: 8m以上触发', reason: '自动平衡发电与水位——保持最优发电效率，自动微调闸门' },
+    storage: { hint: '推荐闸门: 5% | 泄洪: 8m以上触发', reason: '蓄水优先——关闭闸门，水位将快速上升，适合旱季后补水' },
+    flood: { hint: '推荐闸门: 100% | 泄洪: 6m提前触发', reason: '防洪优先——全开闸门并提前触发泄洪，快速降低水位至安全线' }
+  };
+
   modeAuto.addEventListener('click', () => {
     currentMode = 'auto';
     setModeButtons('auto');
     isManualGate = false;
     manualIndicator.style.display = 'none';
+    impactText.classList.remove('show');
     callbacks.onDispatchChange('auto');
-    dispatchHint.textContent = '推荐闸门: 55% | 泄洪: 关闭';
+    dispatchHint.textContent = dispatchInfoMap.auto.hint;
   });
 
   modeStorage.addEventListener('click', () => {
@@ -82,8 +100,9 @@ export function initUI(callbacks) {
     setModeButtons('storage');
     isManualGate = false;
     manualIndicator.style.display = 'none';
+    impactText.classList.remove('show');
     callbacks.onDispatchChange('storage');
-    dispatchHint.textContent = '推荐闸门: 10% | 泄洪: 关闭';
+    dispatchHint.textContent = dispatchInfoMap.storage.hint;
   });
 
   modeFlood.addEventListener('click', () => {
@@ -91,8 +110,9 @@ export function initUI(callbacks) {
     setModeButtons('flood');
     isManualGate = false;
     manualIndicator.style.display = 'none';
+    impactText.classList.remove('show');
     callbacks.onDispatchChange('flood');
-    dispatchHint.textContent = '推荐闸门: 100% | 泄洪: 提前开启';
+    dispatchHint.textContent = dispatchInfoMap.flood.hint;
   });
 
   weatherBtn.addEventListener('click', () => {
@@ -125,6 +145,11 @@ export function initUI(callbacks) {
   repairTurbineBtn.addEventListener('click', () => callbacks.onRepairTurbine());
   repairPipeBtn.addEventListener('click', () => callbacks.onClearPipe());
   exportBtn.addEventListener('click', () => callbacks.onExport());
+
+  drillFlashFlood.addEventListener('click', () => callbacks.onStartDrill('flashFlood'));
+  drillFailure.addEventListener('click', () => callbacks.onStartDrill('unitFailure'));
+  drillSpill.addEventListener('click', () => callbacks.onStartDrill('emergencySpill'));
+  drillStop.addEventListener('click', () => callbacks.onStopDrill());
 
   function updateDisplay(state) {
     valWater.textContent = state.waterLevel.toFixed(2);
@@ -176,6 +201,75 @@ export function initUI(callbacks) {
     }
   }
 
+  function updatePrediction(pred) {
+    if (!pred) {
+      predictionContent.textContent = '⏳ 等待调度模式激活...';
+      return;
+    }
+
+    const info = dispatchInfoMap[pred.mode] || dispatchInfoMap.auto;
+
+    let html = '<span class="pred-highlight">📋 当前调度：' + pred.modeLabel + '</span><br>';
+    html += info.reason + '<br>';
+    html += '<br><span class="pred-highlight">⏱ 60秒预测：</span><br>';
+    html += '水位 <span class="pred-highlight">' + pred.waterLevel.toFixed(2) + 'm</span>';
+
+    if (pred.waterLevel > 8.0) {
+      html += ' <span class="pred-warn">⚠警戒</span>';
+    }
+    if (pred.spillwayOpen) {
+      html += ' <span class="pred-danger">🌊泄洪</span>';
+    }
+
+    html += ' | 流量 <span class="pred-highlight">' + pred.flowRate.toFixed(0) + 'm³/s</span>';
+    html += ' | 功率 <span class="pred-highlight">' + pred.power.toFixed(0) + 'MW</span>';
+
+    predictionContent.innerHTML = html;
+  }
+
+  function updateDeviationImpact(deviation) {
+    if (deviation && deviation.impact) {
+      impactText.textContent = '⚠ ' + deviation.impact;
+      impactText.classList.add('show');
+    } else {
+      impactText.classList.remove('show');
+    }
+  }
+
+  function updateDrillPanel(drillStatus) {
+    if (!drillStatus) {
+      drillPanel.classList.remove('visible');
+      drillStop.style.display = 'none';
+      return;
+    }
+
+    drillPanel.classList.add('visible');
+    drillStop.style.display = 'block';
+
+    const modeLabels = {
+      flashFlood: '🌧️ 暴雨洪峰演练',
+      unitFailure: '🔧 机组故障演练',
+      emergencySpill: '🌊 紧急泄洪演练'
+    };
+    drillHeader.textContent = '🎯 ' + (modeLabels[drillStatus.mode] || '演练进行中');
+
+    let goalsHtml = '';
+    drillStatus.goals.forEach(g => {
+      goalsHtml += '<div class="drill-goal' + (g.done ? ' done' : '') + '">';
+      goalsHtml += '<span class="goal-icon">' + (g.done ? '✅' : '⏳') + '</span>';
+      goalsHtml += g.label;
+      goalsHtml += '</div>';
+    });
+    drillGoals.innerHTML = goalsHtml;
+
+    const elapsed = Math.floor(drillStatus.elapsed);
+    const min = Math.floor(elapsed / 60);
+    const sec = elapsed % 60;
+    drillProgress.textContent = drillStatus.completed
+      ? '🏆 已完成！耗时 ' + min + '分' + sec + '秒'
+      : '进度 ' + drillStatus.doneCount + '/' + drillStatus.totalCount + ' | 已用时 ' + min + '分' + sec + '秒';
+  }
+
   function showAlert(alertData) {
     const toast = document.createElement('div');
     toast.className = 'alert-toast ' + (alertData.type === 'info' ? 'info' : '');
@@ -190,20 +284,27 @@ export function initUI(callbacks) {
     renderSingleChart(charts.flow, chartHistory, 'flowRate', { min: 0, max: 110, unit: 'm³/s', color: '#40c0e0' });
   }
 
-  return { updateDisplay, showAlert, renderCharts };
+  return {
+    updateDisplay,
+    showAlert,
+    renderCharts,
+    updatePrediction,
+    updateDeviationImpact,
+    updateDrillPanel,
+    getCurrentMode: () => currentMode
+  };
 }
 
 function renderSingleChart(chartObj, history, key, opts) {
   const { ctx, canvas } = chartObj;
   const w = canvas.width;
   const h = canvas.height;
-
   ctx.clearRect(0, 0, w, h);
 
   const pw = w - CHART_PAD.left - CHART_PAD.right;
   const ph = h - CHART_PAD.top - CHART_PAD.bottom;
 
-  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
   ctx.lineWidth = 0.5;
   for (let i = 0; i <= 4; i++) {
     const y = CHART_PAD.top + (ph / 4) * i;
@@ -211,7 +312,7 @@ function renderSingleChart(chartObj, history, key, opts) {
     ctx.moveTo(CHART_PAD.left, y);
     ctx.lineTo(w - CHART_PAD.right, y);
     ctx.stroke();
-    ctx.fillStyle = 'rgba(160,185,230,0.4)';
+    ctx.fillStyle = 'rgba(160,185,230,0.35)';
     ctx.font = '8px Consolas, Monaco, monospace';
     ctx.textAlign = 'right';
     const val = opts.max - (opts.max - opts.min) / 4 * i;
@@ -222,8 +323,8 @@ function renderSingleChart(chartObj, history, key, opts) {
 
   const maxTime = history[history.length - 1].time;
   const minTime = Math.max(0, maxTime - 120);
-
   const visible = history.filter(h => h.time >= minTime);
+  if (visible.length < 2) return;
 
   ctx.strokeStyle = opts.color;
   ctx.lineWidth = 1.5;
@@ -240,20 +341,18 @@ function renderSingleChart(chartObj, history, key, opts) {
   ctx.stroke();
 
   const lastH = history[history.length - 1];
-  if (lastH) {
-    const lx = CHART_PAD.left + ((lastH.time - minTime) / Math.max(1, maxTime - minTime)) * pw;
-    const ly = CHART_PAD.top + ph - ((lastH[key] - opts.min) / (opts.max - opts.min)) * ph;
-    const clx = Math.min(w - CHART_PAD.right, Math.max(CHART_PAD.left, lx));
-    const cly = Math.min(CHART_PAD.top + ph, Math.max(CHART_PAD.top, ly));
-    ctx.fillStyle = opts.color;
-    ctx.beginPath();
-    ctx.arc(clx, cly, 3, 0, Math.PI * 2);
-    ctx.fill();
+  const lx = CHART_PAD.left + ((lastH.time - minTime) / Math.max(1, maxTime - minTime)) * pw;
+  const ly = CHART_PAD.top + ph - ((lastH[key] - opts.min) / (opts.max - opts.min)) * ph;
+  const clx = Math.min(w - CHART_PAD.right, Math.max(CHART_PAD.left, lx));
+  const cly = Math.min(CHART_PAD.top + ph, Math.max(CHART_PAD.top, ly));
+  ctx.fillStyle = opts.color;
+  ctx.beginPath();
+  ctx.arc(clx, cly, 3, 0, Math.PI * 2);
+  ctx.fill();
 
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
-    ctx.font = '9px Consolas, Monaco, monospace';
-    ctx.textAlign = 'left';
-    const label = lastH[key].toFixed(1) + ' ' + opts.unit;
-    ctx.fillText(label, clx + 6, cly - 4);
-  }
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.font = '9px Consolas, Monaco, monospace';
+  ctx.textAlign = 'left';
+  const label = lastH[key].toFixed(1) + ' ' + opts.unit;
+  ctx.fillText(label, clx + 6, cly - 4);
 }
