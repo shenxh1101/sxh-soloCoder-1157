@@ -1,11 +1,32 @@
+const CHART_WIDTH = 260;
+const CHART_HEIGHT = 100;
+const CHART_PAD = { top: 10, right: 8, bottom: 16, left: 32 };
+
+function createChartContext(canvasId) {
+  const canvas = document.getElementById(canvasId);
+  const ctx = canvas.getContext('2d');
+  canvas.width = CHART_WIDTH;
+  canvas.height = CHART_HEIGHT;
+  return { canvas, ctx };
+}
+
 export function initUI(callbacks) {
+  const charts = {
+    water: createChartContext('chart-water'),
+    power: createChartContext('chart-power'),
+    flow: createChartContext('chart-flow')
+  };
+
   const gateSlider = document.getElementById('gate-slider');
   const gateVal = document.getElementById('gate-val');
+  const manualIndicator = document.getElementById('manual-indicator');
   const weatherBtn = document.getElementById('weather-btn');
   const seasonBtn = document.getElementById('season-btn');
   const viewBtn = document.getElementById('view-btn');
   const coolBtn = document.getElementById('cool-btn');
   const exportBtn = document.getElementById('export-btn');
+  const dispatchHint = document.getElementById('dispatch-hint');
+
   const valWater = document.getElementById('val-water');
   const valRpm = document.getElementById('val-rpm');
   const valPower = document.getElementById('val-power');
@@ -13,59 +34,97 @@ export function initUI(callbacks) {
   const valTemp = document.getElementById('val-temp');
   const metricWater = document.getElementById('metric-water');
   const metricTemp = document.getElementById('metric-temp');
+  const metricRpm = document.getElementById('metric-rpm');
   const alertOverlay = document.getElementById('alert-overlay');
+
+  const modeAuto = document.getElementById('mode-auto');
+  const modeStorage = document.getElementById('mode-storage');
+  const modeFlood = document.getElementById('mode-flood');
+
+  const dotTurbine = document.getElementById('dot-turbine');
+  const dotPipe = document.getElementById('dot-pipe');
+  const dotOverheat = document.getElementById('dot-overheat');
+  const repairTurbineBtn = document.getElementById('repair-turbine');
+  const repairPipeBtn = document.getElementById('repair-pipe');
 
   let weather = 'sunny';
   let season = 'rainy';
   let currentView = 'external';
+  let currentMode = 'auto';
+  let isManualGate = false;
 
   gateSlider.addEventListener('input', () => {
     const val = parseInt(gateSlider.value) / 100;
     gateVal.textContent = Math.round(val * 100) + '%';
+    isManualGate = true;
+    manualIndicator.style.display = 'inline';
     callbacks.onGateChange(val);
+  });
+
+  function setModeButtons(mode) {
+    [modeAuto, modeStorage, modeFlood].forEach(b => b.classList.remove('mode-active'));
+    if (mode === 'auto') modeAuto.classList.add('mode-active');
+    if (mode === 'storage') modeStorage.classList.add('mode-active');
+    if (mode === 'flood') modeFlood.classList.add('mode-active');
+  }
+
+  modeAuto.addEventListener('click', () => {
+    currentMode = 'auto';
+    setModeButtons('auto');
+    isManualGate = false;
+    manualIndicator.style.display = 'none';
+    callbacks.onDispatchChange('auto');
+    dispatchHint.textContent = '推荐闸门: 55% | 泄洪: 关闭';
+  });
+
+  modeStorage.addEventListener('click', () => {
+    currentMode = 'storage';
+    setModeButtons('storage');
+    isManualGate = false;
+    manualIndicator.style.display = 'none';
+    callbacks.onDispatchChange('storage');
+    dispatchHint.textContent = '推荐闸门: 10% | 泄洪: 关闭';
+  });
+
+  modeFlood.addEventListener('click', () => {
+    currentMode = 'flood';
+    setModeButtons('flood');
+    isManualGate = false;
+    manualIndicator.style.display = 'none';
+    callbacks.onDispatchChange('flood');
+    dispatchHint.textContent = '推荐闸门: 100% | 泄洪: 提前开启';
   });
 
   weatherBtn.addEventListener('click', () => {
     weather = weather === 'sunny' ? 'rain' : 'sunny';
-    if (weather === 'rain') {
-      weatherBtn.innerHTML = '<span class="weather-icon">🌧️</span> 天气：下雨';
-      weatherBtn.classList.add('active');
-    } else {
-      weatherBtn.innerHTML = '<span class="weather-icon">☀️</span> 天气：晴天';
-      weatherBtn.classList.remove('active');
-    }
+    weatherBtn.innerHTML = weather === 'rain'
+      ? '<span class="weather-icon">🌧️</span> 天气：下雨'
+      : '<span class="weather-icon">☀️</span> 天气：晴天';
+    if (weather === 'rain') weatherBtn.classList.add('active');
+    else weatherBtn.classList.remove('active');
     callbacks.onWeatherChange(weather);
   });
 
   seasonBtn.addEventListener('click', () => {
     season = season === 'rainy' ? 'dry' : 'rainy';
-    if (season === 'rainy') {
-      seasonBtn.innerHTML = '<span class="season-indicator rainy"></span> 季节：雨季';
-    } else {
-      seasonBtn.innerHTML = '<span class="season-indicator dry"></span> 季节：旱季';
-    }
+    seasonBtn.innerHTML = season === 'rainy'
+      ? '<span class="season-indicator rainy"></span> 季节：雨季'
+      : '<span class="season-indicator dry"></span> 季节：旱季';
     callbacks.onSeasonChange(season);
   });
 
   viewBtn.addEventListener('click', () => {
     currentView = currentView === 'external' ? 'internal' : 'external';
-    if (currentView === 'internal') {
-      viewBtn.innerHTML = '🏗️ 视角：大坝内部';
-      viewBtn.classList.add('active');
-    } else {
-      viewBtn.innerHTML = '🏗️ 视角：外部全景';
-      viewBtn.classList.remove('active');
-    }
+    viewBtn.innerHTML = currentView === 'internal' ? '🏗️ 视角：大坝内部' : '🏗️ 视角：外部全景';
+    if (currentView === 'internal') viewBtn.classList.add('active');
+    else viewBtn.classList.remove('active');
     callbacks.onViewChange(currentView);
   });
 
-  coolBtn.addEventListener('click', () => {
-    callbacks.onCoolDown();
-  });
-
-  exportBtn.addEventListener('click', () => {
-    callbacks.onExport();
-  });
+  coolBtn.addEventListener('click', () => callbacks.onCoolDown());
+  repairTurbineBtn.addEventListener('click', () => callbacks.onRepairTurbine());
+  repairPipeBtn.addEventListener('click', () => callbacks.onClearPipe());
+  exportBtn.addEventListener('click', () => callbacks.onExport());
 
   function updateDisplay(state) {
     valWater.textContent = state.waterLevel.toFixed(2);
@@ -74,34 +133,46 @@ export function initUI(callbacks) {
     valFlow.textContent = state.flowRate.toFixed(2);
     valTemp.textContent = Math.round(state.temperature);
 
-    if (state.waterLevel > 9.0) {
-      metricWater.className = 'metric-card danger';
-    } else if (state.waterLevel > 8.0) {
-      metricWater.className = 'metric-card warning';
-    } else {
-      metricWater.className = 'metric-card';
+    if (!isManualGate && !state.manualGateOverride) {
+      gateSlider.value = Math.round(state.gateOpening * 100);
+      gateVal.textContent = Math.round(state.gateOpening * 100) + '%';
     }
+
+    if (state.waterLevel > 9.0) metricWater.className = 'metric-card danger';
+    else if (state.waterLevel > 8.0) metricWater.className = 'metric-card warning';
+    else metricWater.className = 'metric-card';
+
+    if (state.faults.turbineSeizure.active) metricRpm.className = 'metric-card danger';
+    else metricRpm.className = 'metric-card';
 
     if (state.isOverheating) {
       metricTemp.className = 'metric-card danger';
       coolBtn.disabled = false;
       coolBtn.textContent = '❄️ 紧急冷却！';
-      coolBtn.className = 'cool-btn danger';
     } else if (state.cooling) {
       metricTemp.className = 'metric-card warning';
       coolBtn.disabled = true;
       coolBtn.textContent = '❄️ 冷却中...';
-      coolBtn.className = 'cool-btn';
     } else if (state.temperature > 80) {
       metricTemp.className = 'metric-card warning';
       coolBtn.disabled = false;
       coolBtn.textContent = '❄️ 冷却发电机';
-      coolBtn.className = 'cool-btn';
     } else {
       metricTemp.className = 'metric-card';
-      coolBtn.disabled = true;
+      coolBtn.disabled = state.temperature <= 40;
       coolBtn.textContent = '❄️ 冷却发电机';
-      coolBtn.className = 'cool-btn';
+    }
+
+    dotTurbine.className = state.faults.turbineSeizure.active ? 'fault-dot fail' : 'fault-dot ok';
+    dotPipe.className = state.faults.pipeBlockage.active ? 'fault-dot fail' : 'fault-dot ok';
+    dotOverheat.className = state.faults.generatorOverheat.active ? 'fault-dot fail' : 'fault-dot ok';
+
+    repairTurbineBtn.disabled = !state.faults.turbineSeizure.active;
+    repairPipeBtn.disabled = !state.faults.pipeBlockage.active;
+
+    if (state.manualGateOverride && !isManualGate) {
+      isManualGate = false;
+      manualIndicator.style.display = 'none';
     }
   }
 
@@ -110,12 +181,79 @@ export function initUI(callbacks) {
     toast.className = 'alert-toast ' + (alertData.type === 'info' ? 'info' : '');
     toast.textContent = alertData.text;
     alertOverlay.appendChild(toast);
-    setTimeout(() => {
-      if (toast.parentNode) {
-        toast.parentNode.removeChild(toast);
-      }
-    }, 4000);
+    setTimeout(() => { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 4000);
   }
 
-  return { updateDisplay, showAlert };
+  function renderCharts(chartHistory) {
+    renderSingleChart(charts.water, chartHistory, 'waterLevel', { min: 0, max: 10, unit: 'm', color: '#4a90d9' });
+    renderSingleChart(charts.power, chartHistory, 'power', { min: 0, max: 750, unit: 'MW', color: '#f0a040' });
+    renderSingleChart(charts.flow, chartHistory, 'flowRate', { min: 0, max: 110, unit: 'm³/s', color: '#40c0e0' });
+  }
+
+  return { updateDisplay, showAlert, renderCharts };
+}
+
+function renderSingleChart(chartObj, history, key, opts) {
+  const { ctx, canvas } = chartObj;
+  const w = canvas.width;
+  const h = canvas.height;
+
+  ctx.clearRect(0, 0, w, h);
+
+  const pw = w - CHART_PAD.left - CHART_PAD.right;
+  const ph = h - CHART_PAD.top - CHART_PAD.bottom;
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 4; i++) {
+    const y = CHART_PAD.top + (ph / 4) * i;
+    ctx.beginPath();
+    ctx.moveTo(CHART_PAD.left, y);
+    ctx.lineTo(w - CHART_PAD.right, y);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(160,185,230,0.4)';
+    ctx.font = '8px Consolas, Monaco, monospace';
+    ctx.textAlign = 'right';
+    const val = opts.max - (opts.max - opts.min) / 4 * i;
+    ctx.fillText(val.toFixed(0), CHART_PAD.left - 4, y + 3);
+  }
+
+  if (!history || history.length < 2) return;
+
+  const maxTime = history[history.length - 1].time;
+  const minTime = Math.max(0, maxTime - 120);
+
+  const visible = history.filter(h => h.time >= minTime);
+
+  ctx.strokeStyle = opts.color;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  let firstPoint = true;
+  for (const h of visible) {
+    const x = CHART_PAD.left + ((h.time - minTime) / Math.max(1, maxTime - minTime)) * pw;
+    const y = CHART_PAD.top + ph - ((h[key] - opts.min) / (opts.max - opts.min)) * ph;
+    const clampedX = Math.min(w - CHART_PAD.right, Math.max(CHART_PAD.left, x));
+    const clampedY = Math.min(CHART_PAD.top + ph, Math.max(CHART_PAD.top, y));
+    if (firstPoint) { ctx.moveTo(clampedX, clampedY); firstPoint = false; }
+    else ctx.lineTo(clampedX, clampedY);
+  }
+  ctx.stroke();
+
+  const lastH = history[history.length - 1];
+  if (lastH) {
+    const lx = CHART_PAD.left + ((lastH.time - minTime) / Math.max(1, maxTime - minTime)) * pw;
+    const ly = CHART_PAD.top + ph - ((lastH[key] - opts.min) / (opts.max - opts.min)) * ph;
+    const clx = Math.min(w - CHART_PAD.right, Math.max(CHART_PAD.left, lx));
+    const cly = Math.min(CHART_PAD.top + ph, Math.max(CHART_PAD.top, ly));
+    ctx.fillStyle = opts.color;
+    ctx.beginPath();
+    ctx.arc(clx, cly, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.font = '9px Consolas, Monaco, monospace';
+    ctx.textAlign = 'left';
+    const label = lastH[key].toFixed(1) + ' ' + opts.unit;
+    ctx.fillText(label, clx + 6, cly - 4);
+  }
 }

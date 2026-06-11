@@ -5,306 +5,124 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>水电站3D模拟 - 发电过程可视化</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
+    * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
-      background: #0a0a1a;
-      overflow: hidden;
-      height: 100vh;
-      width: 100vw;
-      user-select: none;
-      -webkit-user-select: none;
+      background: #0a0a1a; overflow: hidden; height: 100vh; width: 100vw;
+      user-select: none; -webkit-user-select: none;
     }
-
-    #app {
-      position: relative;
-      width: 100%;
-      height: 100%;
-    }
-
-    #canvas-container {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      z-index: 1;
-    }
-
-    canvas {
-      display: block;
-    }
+    #app { position: relative; width: 100%; height: 100%; }
+    #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+    canvas { display: block; }
 
     #top-bar {
-      position: absolute;
-      top: 16px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 10;
-      display: flex;
-      gap: 12px;
-      background: rgba(10, 10, 30, 0.85);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(100, 140, 255, 0.3);
-      border-radius: 16px;
-      padding: 12px 24px;
-      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+      position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 10;
+      display: flex; gap: 8px;
+      background: rgba(10, 10, 30, 0.88); backdrop-filter: blur(12px);
+      border: 1px solid rgba(100, 140, 255, 0.25); border-radius: 14px;
+      padding: 10px 18px; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
     }
-
     .metric-card {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      min-width: 100px;
-      padding: 4px 12px;
-      border-right: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex; flex-direction: column; align-items: center;
+      min-width: 88px; padding: 2px 10px;
+      border-right: 1px solid rgba(255, 255, 255, 0.08);
     }
-
-    .metric-card:last-child {
-      border-right: none;
-    }
-
-    .metric-label {
-      font-size: 11px;
-      color: rgba(180, 200, 240, 0.8);
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      margin-bottom: 4px;
-    }
-
+    .metric-card:last-child { border-right: none; }
+    .metric-label { font-size: 10px; color: rgba(160, 185, 230, 0.75); letter-spacing: 1px; margin-bottom: 2px; }
     .metric-value {
-      font-size: 22px;
-      font-weight: 700;
-      color: #e0e8ff;
-      font-variant-numeric: tabular-nums;
+      font-size: 20px; font-weight: 700; color: #dce6ff;
       font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
     }
-
-    .metric-unit {
-      font-size: 11px;
-      color: rgba(180, 200, 240, 0.6);
-      margin-left: 2px;
-    }
-
-    .metric-card.warning .metric-value {
-      color: #fdcb6e;
-    }
-
-    .metric-card.danger .metric-value {
-      color: #e94560;
-      animation: pulse 1s ease-in-out infinite;
-    }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.5; }
-    }
+    .metric-unit { font-size: 10px; color: rgba(160, 185, 230, 0.5); margin-left: 1px; }
+    .metric-card.warning .metric-value { color: #fdcb6e; }
+    .metric-card.danger .metric-value { color: #e94560; animation: pulse 1s ease-in-out infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
 
     #control-panel {
-      position: absolute;
-      right: 16px;
-      top: 50%;
-      transform: translateY(-50%);
-      z-index: 10;
-      background: rgba(10, 10, 30, 0.85);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(100, 140, 255, 0.3);
-      border-radius: 16px;
-      padding: 20px;
-      width: 240px;
+      position: absolute; right: 14px; top: 50%; transform: translateY(-50%); z-index: 10;
+      background: rgba(10, 10, 30, 0.88); backdrop-filter: blur(12px);
+      border: 1px solid rgba(100, 140, 255, 0.25); border-radius: 14px;
+      padding: 16px; width: 230px;
       box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
+      display: flex; flex-direction: column; gap: 10px;
     }
-
-    .panel-title {
-      font-size: 14px;
-      font-weight: 600;
-      color: #8098d0;
-      text-align: center;
-      letter-spacing: 2px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    }
-
-    .control-group {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .control-group label {
-      font-size: 12px;
-      color: rgba(180, 200, 240, 0.7);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .control-group label .val {
-      color: #64b5f6;
-      font-weight: 600;
-    }
-
+    .panel-title { font-size: 13px; font-weight: 600; color: #788dc8; text-align: center; letter-spacing: 2px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .control-group { display: flex; flex-direction: column; gap: 4px; }
+    .control-group label { font-size: 11px; color: rgba(160, 185, 230, 0.7); display: flex; justify-content: space-between; align-items: center; }
+    .control-group label .val { color: #64b5f6; font-weight: 600; font-size: 11px; }
     input[type="range"] {
-      -webkit-appearance: none;
-      width: 100%;
-      height: 6px;
-      border-radius: 3px;
-      background: linear-gradient(90deg, #1a3a6e, #4a90d9);
-      outline: none;
-      cursor: pointer;
+      -webkit-appearance: none; width: 100%; height: 5px; border-radius: 3px;
+      background: linear-gradient(90deg, #1a3a6e, #4a90d9); outline: none; cursor: pointer;
     }
-
     input[type="range"]::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      width: 20px;
-      height: 20px;
-      border-radius: 50%;
-      background: #64b5f6;
-      border: 2px solid #1a3a6e;
-      cursor: pointer;
+      -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
+      background: #64b5f6; border: 2px solid #1a3a6e; cursor: pointer;
       box-shadow: 0 0 10px rgba(100, 180, 255, 0.5);
     }
-
     button {
-      background: linear-gradient(135deg, #1a3a6e, #2a5a9e);
-      color: #d0e0ff;
-      border: 1px solid rgba(100, 140, 255, 0.4);
-      border-radius: 10px;
-      padding: 10px 16px;
-      font-size: 13px;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      font-family: inherit;
-      letter-spacing: 0.5px;
-      width: 100%;
+      background: linear-gradient(135deg, #1a3a6e, #2a5a9e); color: #c8d8f8;
+      border: 1px solid rgba(100, 140, 255, 0.35); border-radius: 8px;
+      padding: 8px 12px; font-size: 11px; cursor: pointer; transition: all 0.25s;
+      font-family: inherit; letter-spacing: 0.5px; width: 100%;
     }
+    button:hover { background: linear-gradient(135deg, #2a4a8e, #3a6abe); border-color: rgba(100,160,255,0.6); box-shadow: 0 0 12px rgba(100,140,255,0.25); }
+    button:active { transform: scale(0.97); }
+    button.active { background: linear-gradient(135deg, #0f3460, #1a5276); border-color: #64b5f6; box-shadow: 0 0 10px rgba(100,180,255,0.35); }
+    button.danger { background: linear-gradient(135deg, #6e1a1a, #9e2a2a); border-color: rgba(255,100,100,0.4); }
+    button.danger:hover { background: linear-gradient(135deg, #8e2a2a, #be3a3a); box-shadow: 0 0 12px rgba(255,100,100,0.3); }
+    button.cool-btn { background: linear-gradient(135deg, #1a4a6e, #2a7a9e); border-color: rgba(0,180,200,0.4); }
+    button.cool-btn:hover { background: linear-gradient(135deg, #2a6a8e, #3a9abe); box-shadow: 0 0 12px rgba(0,180,200,0.3); }
+    button.cool-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    button.repair-btn { background: linear-gradient(135deg, #4a6e1a, #5a8e2a); border-color: rgba(100,200,100,0.4); font-size: 10px; padding: 6px 10px; }
+    button.repair-btn:hover { background: linear-gradient(135deg, #5a8e2a, #6aae3a); box-shadow: 0 0 12px rgba(100,200,100,0.3); }
 
-    button:hover {
-      background: linear-gradient(135deg, #2a4a8e, #3a6abe);
-      border-color: rgba(100, 160, 255, 0.7);
-      box-shadow: 0 0 16px rgba(100, 140, 255, 0.3);
-    }
+    .dispatch-row { display: flex; gap: 6px; }
+    .dispatch-row button { flex: 1; font-size: 10px; padding: 7px 6px; }
+    .dispatch-row button.mode-active { background: linear-gradient(135deg, #0a3050, #1a6080); border-color: #40c0e0; box-shadow: 0 0 8px rgba(64,192,224,0.3); }
 
-    button:active {
-      transform: scale(0.97);
-    }
+    .fault-group { display: flex; flex-direction: column; gap: 5px; }
+    .fault-row { display: flex; align-items: center; justify-content: space-between; font-size: 10px; color: rgba(160,185,230,0.7); }
+    .fault-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+    .fault-dot.ok { background: #00b894; box-shadow: 0 0 4px #00b894; }
+    .fault-dot.fail { background: #e94560; box-shadow: 0 0 6px #e94560; animation: pulse 0.8s ease-in-out infinite; }
+    .fault-btn { font-size: 10px; padding: 4px 8px; width: auto; border-radius: 6px; }
 
-    button.active {
-      background: linear-gradient(135deg, #0f3460, #1a5276);
-      border-color: #64b5f6;
-      box-shadow: 0 0 12px rgba(100, 180, 255, 0.4);
+    #chart-panel {
+      position: absolute; left: 14px; bottom: 16px; z-index: 10;
+      display: flex; gap: 8px;
+      background: rgba(10, 10, 30, 0.88); backdrop-filter: blur(12px);
+      border: 1px solid rgba(100, 140, 255, 0.25); border-radius: 14px;
+      padding: 12px; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
     }
-
-    button.danger {
-      background: linear-gradient(135deg, #6e1a1a, #9e2a2a);
-      border-color: rgba(255, 100, 100, 0.4);
-    }
-
-    button.danger:hover {
-      background: linear-gradient(135deg, #8e2a2a, #be3a3a);
-      box-shadow: 0 0 16px rgba(255, 100, 100, 0.3);
-    }
-
-    button.cool-btn {
-      background: linear-gradient(135deg, #1a4a6e, #2a7a9e);
-      border-color: rgba(0, 200, 200, 0.4);
-    }
-
-    button.cool-btn:hover {
-      background: linear-gradient(135deg, #2a6a8e, #3a9abe);
-      box-shadow: 0 0 16px rgba(0, 200, 200, 0.3);
-    }
-
-    button.cool-btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
+    .chart-box { display: flex; flex-direction: column; align-items: center; }
+    .chart-title { font-size: 10px; color: rgba(160,185,230,0.65); margin-bottom: 4px; letter-spacing: 1px; }
+    .chart-box canvas { border-radius: 6px; background: rgba(0,0,0,0.25); }
 
     #alert-overlay {
-      position: absolute;
-      top: 120px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 20;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      pointer-events: none;
+      position: absolute; top: 100px; left: 50%; transform: translateX(-50%);
+      z-index: 20; display: flex; flex-direction: column; gap: 6px; pointer-events: none;
     }
-
     .alert-toast {
-      background: rgba(233, 69, 96, 0.9);
-      color: white;
-      padding: 12px 24px;
-      border-radius: 10px;
-      font-size: 14px;
-      font-weight: 600;
-      text-align: center;
+      background: rgba(233, 69, 96, 0.92); color: white; padding: 10px 22px;
+      border-radius: 8px; font-size: 13px; font-weight: 600; text-align: center;
       animation: slideIn 0.4s ease-out, fadeOut 0.5s ease-in 3.5s forwards;
-      backdrop-filter: blur(8px);
-      border: 1px solid rgba(255, 100, 100, 0.5);
-      box-shadow: 0 4px 20px rgba(233, 69, 96, 0.4);
+      backdrop-filter: blur(8px); border: 1px solid rgba(255,100,100,0.5);
+      box-shadow: 0 4px 20px rgba(233,69,96,0.4);
     }
-
-    .alert-toast.info {
-      background: rgba(0, 150, 199, 0.9);
-      border-color: rgba(100, 200, 255, 0.5);
-      box-shadow: 0 4px 20px rgba(0, 150, 199, 0.4);
-    }
-
-    @keyframes slideIn {
-      from { transform: translateY(-20px); opacity: 0; }
-      to { transform: translateY(0); opacity: 1; }
-    }
-
-    @keyframes fadeOut {
-      from { opacity: 1; }
-      to { opacity: 0; }
-    }
+    .alert-toast.info { background: rgba(0, 150, 199, 0.92); border-color: rgba(100,200,255,0.5); box-shadow: 0 4px 20px rgba(0,150,199,0.4); }
+    @keyframes slideIn { from{transform:translateY(-20px);opacity:0} to{transform:translateY(0);opacity:1} }
+    @keyframes fadeOut { from{opacity:1} to{opacity:0} }
 
     #bottom-info {
-      position: absolute;
-      bottom: 16px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 10;
-      font-size: 11px;
-      color: rgba(180, 200, 240, 0.5);
-      letter-spacing: 1px;
+      position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+      z-index: 10; font-size: 10px; color: rgba(160,185,230,0.4); letter-spacing: 1px;
     }
+    .season-indicator { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 3px; vertical-align: middle; }
+    .season-indicator.rainy { background: #4a90d9; box-shadow: 0 0 6px #4a90d9; }
+    .season-indicator.dry { background: #e9a04a; box-shadow: 0 0 6px #e9a04a; }
+    .weather-icon { font-size: 14px; vertical-align: middle; margin-right: 3px; }
 
-    .season-indicator {
-      display: inline-block;
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      margin-right: 4px;
-      vertical-align: middle;
-    }
-
-    .season-indicator.rainy {
-      background: #4a90d9;
-      box-shadow: 0 0 8px #4a90d9;
-    }
-
-    .season-indicator.dry {
-      background: #e9a04a;
-      box-shadow: 0 0 8px #e9a04a;
-    }
-
-    .weather-icon {
-      font-size: 16px;
-      vertical-align: middle;
-      margin-right: 4px;
-    }
+    .dispatch-hint { font-size: 9px; color: rgba(160,185,230,0.45); text-align: center; margin-top: -4px; }
   </style>
 </head>
 <body>
@@ -312,56 +130,54 @@
     <div id="canvas-container"></div>
 
     <div id="top-bar">
-      <div class="metric-card" id="metric-water">
-        <span class="metric-label">水位高度</span>
-        <span><span class="metric-value" id="val-water">0.00</span><span class="metric-unit">m</span></span>
-      </div>
-      <div class="metric-card" id="metric-rpm">
-        <span class="metric-label">水轮机转速</span>
-        <span><span class="metric-value" id="val-rpm">0</span><span class="metric-unit">RPM</span></span>
-      </div>
-      <div class="metric-card" id="metric-power">
-        <span class="metric-label">发电功率</span>
-        <span><span class="metric-value" id="val-power">0.00</span><span class="metric-unit">MW</span></span>
-      </div>
-      <div class="metric-card" id="metric-flow">
-        <span class="metric-label">瞬时流量</span>
-        <span><span class="metric-value" id="val-flow">0.00</span><span class="metric-unit">m³/s</span></span>
-      </div>
-      <div class="metric-card" id="metric-temp">
-        <span class="metric-label">发电机温度</span>
-        <span><span class="metric-value" id="val-temp">40</span><span class="metric-unit">°C</span></span>
-      </div>
+      <div class="metric-card" id="metric-water"><span class="metric-label">水位高度</span><span><span class="metric-value" id="val-water">0.00</span><span class="metric-unit">m</span></span></div>
+      <div class="metric-card" id="metric-rpm"><span class="metric-label">水轮机转速</span><span><span class="metric-value" id="val-rpm">0</span><span class="metric-unit">RPM</span></span></div>
+      <div class="metric-card" id="metric-power"><span class="metric-label">发电功率</span><span><span class="metric-value" id="val-power">0.00</span><span class="metric-unit">MW</span></span></div>
+      <div class="metric-card" id="metric-flow"><span class="metric-label">瞬时流量</span><span><span class="metric-value" id="val-flow">0.00</span><span class="metric-unit">m³/s</span></span></div>
+      <div class="metric-card" id="metric-temp"><span class="metric-label">发电机温度</span><span><span class="metric-value" id="val-temp">40</span><span class="metric-unit">°C</span></span></div>
     </div>
 
     <div id="control-panel">
-      <div class="panel-title">⚡ 控制面板</div>
+      <div class="panel-title">⚡ 运行控制台</div>
+
+      <div class="dispatch-row">
+        <button id="mode-auto" class="mode-active">⚙️ 自动发电</button>
+        <button id="mode-storage">💧 蓄水</button>
+        <button id="mode-flood">🌊 防洪</button>
+      </div>
+      <div class="dispatch-hint" id="dispatch-hint">推荐闸门: 55% | 泄洪: 关闭</div>
+
       <div class="control-group">
-        <label>闸门开度 <span class="val" id="gate-val">50%</span></label>
+        <label>闸门开度 <span class="val" id="gate-val">50%</span> <span id="manual-indicator" style="font-size:9px;color:#fdcb6e;display:none">⚡手动</span></label>
         <input type="range" id="gate-slider" min="0" max="100" value="50" step="1">
       </div>
-      <button id="weather-btn" class="active">
-        <span class="weather-icon">☀️</span> 天气：晴天
-      </button>
-      <button id="season-btn">
-        <span class="season-indicator rainy"></span> 季节：雨季
-      </button>
+
+      <button id="weather-btn"><span class="weather-icon">☀️</span> 天气：晴天</button>
+      <button id="season-btn"><span class="season-indicator rainy"></span> 季节：雨季</button>
       <button id="view-btn">🏗️ 视角：外部全景</button>
-      <button id="cool-btn" class="cool-btn" disabled>❄️ 冷却发电机</button>
+
+      <div class="fault-group">
+        <div class="panel-title" style="font-size:11px;margin-top:2px">⚠️ 故障状态</div>
+        <div class="fault-row"><span><span class="fault-dot ok" id="dot-turbine"></span>水轮机卡滞</span><button class="fault-btn repair-btn" id="repair-turbine" disabled>维修</button></div>
+        <div class="fault-row"><span><span class="fault-dot ok" id="dot-pipe"></span>输水管堵塞</span><button class="fault-btn repair-btn" id="repair-pipe" disabled>疏通</button></div>
+        <div class="fault-row"><span><span class="fault-dot ok" id="dot-overheat"></span>发电机过热</span><button class="fault-btn cool-btn" id="cool-btn" disabled>冷却</button></div>
+      </div>
+
       <button id="export-btn">📊 导出运行数据 CSV</button>
     </div>
 
+    <div id="chart-panel">
+      <div class="chart-box"><span class="chart-title">水位 (m)</span><canvas id="chart-water" width="260" height="100"></canvas></div>
+      <div class="chart-box"><span class="chart-title">功率 (MW)</span><canvas id="chart-power" width="260" height="100"></canvas></div>
+      <div class="chart-box"><span class="chart-title">流量 (m³/s)</span><canvas id="chart-flow" width="260" height="100"></canvas></div>
+    </div>
+
     <div id="alert-overlay"></div>
-    <div id="bottom-info">💡 鼠标拖拽旋转 | 滚轮缩放 | 右键平移 | 调节闸门控制发电</div>
+    <div id="bottom-info">💡 鼠标拖拽旋转 | 滚轮缩放 | 右键平移 | 调度模式自动管理闸门</div>
   </div>
 
   <script type="importmap">
-    {
-      "imports": {
-        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-      }
-    }
+    { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
   </script>
   <script type="module" src="js/main.js"></script>
 </body>

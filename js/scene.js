@@ -612,6 +612,23 @@ function updateWaterLevel(obj, state) {
 
 function updateTurbineRotation(obj, state) {
   if (!obj.turbineBlades) return;
+
+  if (state.faults && state.faults.turbineSeizure && state.faults.turbineSeizure.active) {
+    obj.turbineBlades.rotation.x += Math.sin(performance.now() * 0.003) * 0.02;
+    if (obj.turbineHousing) {
+      obj.turbineHousing.material.color.lerp(new THREE.Color(0x994433), 0.1);
+      obj.turbineHousing.material.emissive = new THREE.Color(0x330000);
+      obj.turbineHousing.material.emissiveIntensity = 0.4;
+    }
+    return;
+  }
+
+  if (obj.turbineHousing) {
+    obj.turbineHousing.material.color.lerp(new THREE.Color(0x606068), 0.1);
+    obj.turbineHousing.material.emissive = new THREE.Color(0x000000);
+    obj.turbineHousing.material.emissiveIntensity = 0;
+  }
+
   const rps = state.turbineSpeed / 60;
   obj.turbineBlades.rotation.x += rps * Math.PI * 2 * 0.016;
 }
@@ -698,6 +715,12 @@ function updateWaterFlow(obj, state, dt) {
   const positions = obj.waterFlowParticles.geometry.attributes.position;
   const count = positions.count;
   const gateFlow = state.flowRate;
+
+  if (gateFlow < 0.5) {
+    obj.waterFlowParticles.material.opacity = 0;
+    return;
+  }
+
   obj.waterFlowParticles.material.opacity = 0.2 + (gateFlow / 100) * 0.6;
 
   for (let i = 0; i < count; i++) {
