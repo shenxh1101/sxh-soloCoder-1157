@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>水电站3D模拟 - 发电过程可视化</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+      background: #0a0a1a;
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    #app {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+
+    #canvas-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+
+    canvas {
+      display: block;
+    }
+
+    #top-bar {
+      position: absolute;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      display: flex;
+      gap: 12px;
+      background: rgba(10, 10, 30, 0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(100, 140, 255, 0.3);
+      border-radius: 16px;
+      padding: 12px 24px;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+    }
+
+    .metric-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-width: 100px;
+      padding: 4px 12px;
+      border-right: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .metric-card:last-child {
+      border-right: none;
+    }
+
+    .metric-label {
+      font-size: 11px;
+      color: rgba(180, 200, 240, 0.8);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 4px;
+    }
+
+    .metric-value {
+      font-size: 22px;
+      font-weight: 700;
+      color: #e0e8ff;
+      font-variant-numeric: tabular-nums;
+      font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    }
+
+    .metric-unit {
+      font-size: 11px;
+      color: rgba(180, 200, 240, 0.6);
+      margin-left: 2px;
+    }
+
+    .metric-card.warning .metric-value {
+      color: #fdcb6e;
+    }
+
+    .metric-card.danger .metric-value {
+      color: #e94560;
+      animation: pulse 1s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    #control-panel {
+      position: absolute;
+      right: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 10;
+      background: rgba(10, 10, 30, 0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(100, 140, 255, 0.3);
+      border-radius: 16px;
+      padding: 20px;
+      width: 240px;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .panel-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #8098d0;
+      text-align: center;
+      letter-spacing: 2px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .control-group label {
+      font-size: 12px;
+      color: rgba(180, 200, 240, 0.7);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .control-group label .val {
+      color: #64b5f6;
+      font-weight: 600;
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 6px;
+      border-radius: 3px;
+      background: linear-gradient(90deg, #1a3a6e, #4a90d9);
+      outline: none;
+      cursor: pointer;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #64b5f6;
+      border: 2px solid #1a3a6e;
+      cursor: pointer;
+      box-shadow: 0 0 10px rgba(100, 180, 255, 0.5);
+    }
+
+    button {
+      background: linear-gradient(135deg, #1a3a6e, #2a5a9e);
+      color: #d0e0ff;
+      border: 1px solid rgba(100, 140, 255, 0.4);
+      border-radius: 10px;
+      padding: 10px 16px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-family: inherit;
+      letter-spacing: 0.5px;
+      width: 100%;
+    }
+
+    button:hover {
+      background: linear-gradient(135deg, #2a4a8e, #3a6abe);
+      border-color: rgba(100, 160, 255, 0.7);
+      box-shadow: 0 0 16px rgba(100, 140, 255, 0.3);
+    }
+
+    button:active {
+      transform: scale(0.97);
+    }
+
+    button.active {
+      background: linear-gradient(135deg, #0f3460, #1a5276);
+      border-color: #64b5f6;
+      box-shadow: 0 0 12px rgba(100, 180, 255, 0.4);
+    }
+
+    button.danger {
+      background: linear-gradient(135deg, #6e1a1a, #9e2a2a);
+      border-color: rgba(255, 100, 100, 0.4);
+    }
+
+    button.danger:hover {
+      background: linear-gradient(135deg, #8e2a2a, #be3a3a);
+      box-shadow: 0 0 16px rgba(255, 100, 100, 0.3);
+    }
+
+    button.cool-btn {
+      background: linear-gradient(135deg, #1a4a6e, #2a7a9e);
+      border-color: rgba(0, 200, 200, 0.4);
+    }
+
+    button.cool-btn:hover {
+      background: linear-gradient(135deg, #2a6a8e, #3a9abe);
+      box-shadow: 0 0 16px rgba(0, 200, 200, 0.3);
+    }
+
+    button.cool-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    #alert-overlay {
+      position: absolute;
+      top: 120px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+    }
+
+    .alert-toast {
+      background: rgba(233, 69, 96, 0.9);
+      color: white;
+      padding: 12px 24px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      text-align: center;
+      animation: slideIn 0.4s ease-out, fadeOut 0.5s ease-in 3.5s forwards;
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 100, 100, 0.5);
+      box-shadow: 0 4px 20px rgba(233, 69, 96, 0.4);
+    }
+
+    .alert-toast.info {
+      background: rgba(0, 150, 199, 0.9);
+      border-color: rgba(100, 200, 255, 0.5);
+      box-shadow: 0 4px 20px rgba(0, 150, 199, 0.4);
+    }
+
+    @keyframes slideIn {
+      from { transform: translateY(-20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    @keyframes fadeOut {
+      from { opacity: 1; }
+      to { opacity: 0; }
+    }
+
+    #bottom-info {
+      position: absolute;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      font-size: 11px;
+      color: rgba(180, 200, 240, 0.5);
+      letter-spacing: 1px;
+    }
+
+    .season-indicator {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 4px;
+      vertical-align: middle;
+    }
+
+    .season-indicator.rainy {
+      background: #4a90d9;
+      box-shadow: 0 0 8px #4a90d9;
+    }
+
+    .season-indicator.dry {
+      background: #e9a04a;
+      box-shadow: 0 0 8px #e9a04a;
+    }
+
+    .weather-icon {
+      font-size: 16px;
+      vertical-align: middle;
+      margin-right: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="canvas-container"></div>
+
+    <div id="top-bar">
+      <div class="metric-card" id="metric-water">
+        <span class="metric-label">水位高度</span>
+        <span><span class="metric-value" id="val-water">0.00</span><span class="metric-unit">m</span></span>
+      </div>
+      <div class="metric-card" id="metric-rpm">
+        <span class="metric-label">水轮机转速</span>
+        <span><span class="metric-value" id="val-rpm">0</span><span class="metric-unit">RPM</span></span>
+      </div>
+      <div class="metric-card" id="metric-power">
+        <span class="metric-label">发电功率</span>
+        <span><span class="metric-value" id="val-power">0.00</span><span class="metric-unit">MW</span></span>
+      </div>
+      <div class="metric-card" id="metric-flow">
+        <span class="metric-label">瞬时流量</span>
+        <span><span class="metric-value" id="val-flow">0.00</span><span class="metric-unit">m³/s</span></span>
+      </div>
+      <div class="metric-card" id="metric-temp">
+        <span class="metric-label">发电机温度</span>
+        <span><span class="metric-value" id="val-temp">40</span><span class="metric-unit">°C</span></span>
+      </div>
+    </div>
+
+    <div id="control-panel">
+      <div class="panel-title">⚡ 控制面板</div>
+      <div class="control-group">
+        <label>闸门开度 <span class="val" id="gate-val">50%</span></label>
+        <input type="range" id="gate-slider" min="0" max="100" value="50" step="1">
+      </div>
+      <button id="weather-btn" class="active">
+        <span class="weather-icon">☀️</span> 天气：晴天
+      </button>
+      <button id="season-btn">
+        <span class="season-indicator rainy"></span> 季节：雨季
+      </button>
+      <button id="view-btn">🏗️ 视角：外部全景</button>
+      <button id="cool-btn" class="cool-btn" disabled>❄️ 冷却发电机</button>
+      <button id="export-btn">📊 导出运行数据 CSV</button>
+    </div>
+
+    <div id="alert-overlay"></div>
+    <div id="bottom-info">💡 鼠标拖拽旋转 | 滚轮缩放 | 右键平移 | 调节闸门控制发电</div>
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
