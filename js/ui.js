@@ -284,6 +284,28 @@ export function initUI(callbacks) {
     renderSingleChart(charts.flow, chartHistory, 'flowRate', { min: 0, max: 110, unit: 'm³/s', color: '#40c0e0' });
   }
 
+  const faultLogEntries = document.getElementById('fault-log-entries');
+
+  function updateFaultLog(faultLog) {
+    if (!faultLog || faultLog.length === 0) {
+      faultLogEntries.innerHTML = '<div style="font-size:9px;color:rgba(160,185,230,0.3);text-align:center">暂无事故记录</div>';
+      return;
+    }
+
+    let html = '';
+    faultLog.forEach(entry => {
+      const min = Math.floor(entry.time / 60);
+      const sec = Math.floor(entry.time % 60);
+      const timeStr = min + '分' + sec + '秒';
+      const eventLabel = entry.event === 'triggered' ? '🔴 触发' : '✅ 解除';
+      html += '<div class="fault-log-entry ' + entry.event + '">';
+      html += '<span>' + eventLabel + ' ' + entry.label + '</span>';
+      html += '<span class="fault-log-time">' + timeStr + '</span>';
+      html += '</div>';
+    });
+    faultLogEntries.innerHTML = html;
+  }
+
   return {
     updateDisplay,
     showAlert,
@@ -291,6 +313,7 @@ export function initUI(callbacks) {
     updatePrediction,
     updateDeviationImpact,
     updateDrillPanel,
+    updateFaultLog,
     getCurrentMode: () => currentMode
   };
 }

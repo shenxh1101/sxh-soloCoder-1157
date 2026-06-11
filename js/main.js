@@ -59,7 +59,7 @@ const modeLabels = { auto: '自动发电', storage: '蓄水', flood: '防洪' };
 
 const {
   updateDisplay, showAlert, renderCharts,
-  updatePrediction, updateDeviationImpact, updateDrillPanel,
+  updatePrediction, updateDeviationImpact, updateDrillPanel, updateFaultLog,
   getCurrentMode
 } = initUI({
   onGateChange: (val) => {
@@ -86,10 +86,10 @@ const {
       document.getElementById('season-btn').innerHTML = '<span class="season-indicator rainy"></span> 季节：雨季';
     }
     if (mode === 'emergencySpill') {
-      setSkyColor(scene, 'rain');
-      document.getElementById('weather-btn').innerHTML = '<span class="weather-icon">🌧️</span> 天气：下雨';
-      document.getElementById('weather-btn').classList.add('active');
-      document.getElementById('season-btn').innerHTML = '<span class="season-indicator rainy"></span> 季节：雨季';
+      setSkyColor(scene, 'sunny');
+      document.getElementById('weather-btn').innerHTML = '<span class="weather-icon">☀️</span> 天气：晴天';
+      document.getElementById('weather-btn').classList.remove('active');
+      document.getElementById('season-btn').innerHTML = '<span class="season-indicator dry"></span> 季节：旱季';
       const modeBtns = [document.getElementById('mode-auto'), document.getElementById('mode-storage'), document.getElementById('mode-flood')];
       modeBtns.forEach(b => b.classList.remove('mode-active'));
       document.getElementById('mode-flood').classList.add('mode-active');
@@ -145,6 +145,9 @@ function animate() {
 
   const drillStatus = getDrillStatus(sim);
   updateDrillPanel(drillStatus);
+
+  const faultLog = getFaultLog(sim);
+  updateFaultLog(faultLog);
 
   const alerts = getAlertMessages(sim);
   alerts.forEach(a => showAlert(a));

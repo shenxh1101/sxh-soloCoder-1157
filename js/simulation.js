@@ -1,7 +1,7 @@
 const MAX_WATER_LEVEL = 10.0;
 const WARNING_LEVEL = 8.0;
 const CRITICAL_LEVEL = 9.0;
-const RESERVOIR_AREA = 250000;
+const RESERVOIR_AREA = 6000;
 const BASE_INFLOW = 50;
 const MAX_GATE_FLOW = 100;
 const SPILLWAY_COEFF = 40;
@@ -388,7 +388,7 @@ export function startDrill(sim, mode) {
     case 'flashFlood':
       sim.weather = 'rain';
       sim.season = 'rainy';
-      sim.waterLevel = 6.5;
+      sim.waterLevel = 7.2;
       sim.gateOpening = 0.4;
       sim.dispatchMode = 'auto';
       sim.manualGateOverride = false;
@@ -408,15 +408,19 @@ export function startDrill(sim, mode) {
       sim.gateOpening = 0.7;
       sim.dispatchMode = 'auto';
       sim.manualGateOverride = false;
-      sim.temperature = 90;
+      sim.temperature = 105;
       sim.faults.turbineSeizure.active = true;
       sim.faults.turbineSeizure.detectedAt = sim.time;
       sim.faultTriggerTimers.turbineSeizure = 0;
       sim.faults.pipeBlockage.active = true;
       sim.faults.pipeBlockage.detectedAt = sim.time;
       sim.faultTriggerTimers.pipeBlockage = 0;
+      sim.faults.generatorOverheat.active = true;
+      sim.faults.generatorOverheat.detectedAt = sim.time;
+      sim.isOverheating = true;
       addFaultLogEntry(sim, 'turbineSeizure', 'triggered');
       addFaultLogEntry(sim, 'pipeBlockage', 'triggered');
+      addFaultLogEntry(sim, 'generatorOverheat', 'triggered');
       sim.drillGoals = [
         { label: '维修水轮机卡滞故障', key: 'turbineFixed', done: false },
         { label: '疏通输水管堵塞', key: 'pipeFixed', done: false },
@@ -427,10 +431,10 @@ export function startDrill(sim, mode) {
       break;
 
     case 'emergencySpill':
-      sim.weather = 'rain';
-      sim.season = 'rainy';
+      sim.weather = 'sunny';
+      sim.season = 'dry';
       sim.waterLevel = 8.5;
-      sim.gateOpening = 0.8;
+      sim.gateOpening = 1.0;
       sim.dispatchMode = 'flood';
       sim.manualGateOverride = false;
       sim.drillGoals = [

@@ -66,6 +66,14 @@
     .drill-goal.done { color: #00b894; background: rgba(0,184,148,0.08); }
     .drill-goal .goal-icon { font-size: 11px; }
 
+    #fault-log-panel { position: absolute; left: 14px; top: 400px; z-index: 10; background: rgba(10, 10, 30, 0.88); backdrop-filter: blur(12px); border: 1px solid rgba(255, 150, 50, 0.3); border-radius: 12px; padding: 8px 12px; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5); min-width: 260px; max-height: 180px; overflow-y: auto; }
+    #fault-log-header { font-size: 10px; font-weight: 600; color: #f0a040; text-align: center; margin-bottom: 4px; letter-spacing: 1px; }
+    #fault-log-entries { display: flex; flex-direction: column; gap: 2px; }
+    .fault-log-entry { font-size: 9px; color: rgba(200,200,220,0.7); padding: 2px 4px; border-left: 2px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; }
+    .fault-log-entry.triggered { border-left-color: #e94560; color: #e9a0a0; }
+    .fault-log-entry.resolved { border-left-color: #00b894; color: #80d0b0; }
+    .fault-log-time { color: rgba(200,200,220,0.35); margin-left: 8px; white-space: nowrap; }
+
     #alert-overlay { position: absolute; top: 100px; left: 50%; transform: translateX(-50%); z-index: 20; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
     .alert-toast { background: rgba(233, 69, 96, 0.92); color: white; padding: 10px 22px; border-radius: 8px; font-size: 13px; font-weight: 600; text-align: center; animation: slideIn 0.4s ease-out, fadeOut 0.5s ease-in 3.5s forwards; backdrop-filter: blur(8px); border: 1px solid rgba(255,100,100,0.5); box-shadow: 0 4px 20px rgba(233,69,96,0.4); }
     .alert-toast.info { background: rgba(0, 150, 199, 0.92); border-color: rgba(100,200,255,0.5); box-shadow: 0 4px 20px rgba(0,150,199,0.4); }
@@ -138,6 +146,13 @@
       <div class="drill-header" id="drill-header">🎯 演练进行中</div>
       <div id="drill-goals"></div>
       <div style="font-size:9px;color:rgba(180,160,230,0.4);margin-top:6px;text-align:center" id="drill-progress"></div>
+    </div>
+
+    <div id="fault-log-panel">
+      <div id="fault-log-header">📋 事故记录时间线</div>
+      <div id="fault-log-entries">
+        <div style="font-size:9px;color:rgba(160,185,230,0.3);text-align:center">暂无事故记录</div>
+      </div>
     </div>
 
     <div id="chart-panel">
